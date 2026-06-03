@@ -517,11 +517,12 @@ def build_payload(con, pid):
         },
         "groups": [],
     }
+    # un solo grupo por proyecto, con el nombre del cliente; todas las tareas adentro
+    group = {"title": client, "items": []}
     for ln in data["lines"]:
-        g = {"title": ln["name"], "items": []}
         for t in ln["tasks"]:
             dep_info = dept_map.get((t.get("responsible") or "").split(",")[0].strip(), {})
-            g["items"].append({
+            group["items"].append({
                 "name": f"Lanzamiento | {client} | {t['name']}",
                 "task": t["name"],
                 "description": t.get("description", ""),
@@ -531,7 +532,7 @@ def build_payload(con, pid):
                 "department_index": dep_info.get("index"),
                 "deadline": t["end_date"],
             })
-        payload["groups"].append(g)
+    payload["groups"].append(group)
     return payload
 
 # --------------------------------------------------------------------------- API Monday (mutations reales)
