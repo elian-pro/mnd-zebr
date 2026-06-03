@@ -15,5 +15,5 @@ COPY . .
 ENV PORT=5000
 EXPOSE 5000
 
-# 2 workers, timeout holgado para generación de PDF.
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers 2 --timeout 120 app:app"]
+# 2 workers, timeout holgado para generación de PDF y envío secuencial a Monday.
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers 2 --timeout 300 app:app"]

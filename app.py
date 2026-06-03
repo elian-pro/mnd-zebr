@@ -4,6 +4,7 @@ Backend Flask + PostgreSQL. Listo para Git + EasyPanel (gunicorn).
 """
 import os
 import json
+import time
 import datetime
 from flask import Flask, request, jsonify, send_from_directory
 import db as DB
@@ -498,17 +499,40 @@ def build_payload(con, pid):
     return payload
 
 # --------------------------------------------------------------------------- API Monday (mutations reales)
-def _monday_gql(token, query, variables):
-    import urllib.request
+# Pausa entre llamadas para respetar los límites de tasa de Monday (se envían de uno en uno).
+MONDAY_DELAY = float(os.environ.get("MONDAY_DELAY", "0.4"))
+
+def _monday_gql(token, query, variables, tries=4):
+    """POST GraphQL a Monday con reintento ante límite de tasa (HTTP 429 o 'complexity budget')."""
+    import urllib.request, urllib.error
     body = json.dumps({"query": query, "variables": variables}).encode()
-    req = urllib.request.Request(
-        "https://api.monday.com/v2", data=body,
-        headers={"Authorization": token, "Content-Type": "application/json", "API-Version": "2024-01"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read().decode())
+    res = {}
+    for attempt in range(tries):
+        req = urllib.request.Request(
+            "https://api.monday.com/v2", data=body,
+            headers={"Authorization": token, "Content-Type": "application/json", "API-Version": "2024-01"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                res = json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < tries - 1:
+                wait = 0
+                try:
+                    wait = int(e.headers.get("Retry-After", "0"))
+                except (TypeError, ValueError):
+                    wait = 0
+                time.sleep(min(max(wait, 5 * (attempt + 1)), 60))
+                continue
+            raise
+        # el límite por minuto a veces llega como HTTP 200 con 'errors'
+        if "limit" in json.dumps(res.get("errors") or "").lower() and attempt < tries - 1:
+            time.sleep(min(10 * (attempt + 1), 60))
+            continue
+        return res
+    return res
 
 def push_to_monday(token, payload):
-    """Crea un grupo por línea y un ítem por tarea en el board configurado.
+    """Crea un grupo por línea y un ítem por tarea en el board configurado, de uno en uno.
     Devuelve (creadas, [errores])."""
     board = str(payload["board_id"])
     cols = payload["columns"]
@@ -525,6 +549,7 @@ def push_to_monday(token, payload):
                 errors.append(f"grupo «{g['title']}»: {res.get('errors')}")
         except Exception as e:
             errors.append(f"grupo «{g['title']}»: {e}")
+        time.sleep(MONDAY_DELAY)
         for it in g["items"]:
             cv = {}
             if cols.get("status") and it.get("status"):
@@ -547,6 +572,7 @@ def push_to_monday(token, payload):
                     errors.append(f"ítem «{it['task']}»: {res.get('errors')}")
             except Exception as e:
                 errors.append(f"ítem «{it['task']}»: {e}")
+            time.sleep(MONDAY_DELAY)  # de uno en uno, respetando límites de Monday
     return created, errors
 
 @app.route("/api/projects/<int:pid>/launch", methods=["POST"])
