@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS tasks(
   responsible TEXT DEFAULT '',
   position INTEGER NOT NULL,
   depends_on INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  start_override DATE,
   start_date DATE,
   end_date DATE
 );
@@ -136,6 +137,7 @@ def init_db():
             # migraciones suaves para bases ya existentes (CREATE IF NOT EXISTS no agrega columnas nuevas)
             cur.execute("ALTER TABLE monday_people ADD COLUMN IF NOT EXISTS department TEXT DEFAULT ''")
             cur.execute("ALTER TABLE monday_departments ADD COLUMN IF NOT EXISTS color TEXT DEFAULT ''")
+            cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_override DATE")
             # sembrar claves de config vacías si no existen
             for k in CONFIG_KEYS:
                 cur.execute("INSERT INTO config(key,value) VALUES(%s,'') ON CONFLICT (key) DO NOTHING", (k,))

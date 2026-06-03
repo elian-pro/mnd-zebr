@@ -184,9 +184,12 @@ def update_task(tid):
     d = request.json
     con = connect()
     with con.cursor() as cur:
-        for k in ("name", "description", "days", "status", "responsible", "depends_on"):
+        for k in ("name", "description", "days", "status", "responsible", "depends_on", "start_override"):
             if k in d:
-                cur.execute(f"UPDATE tasks SET {k}=%s WHERE id=%s", (d[k], tid))
+                v = d[k]
+                if k == "start_override" and not v:   # "" o null -> volver a automático
+                    v = None
+                cur.execute(f"UPDATE tasks SET {k}=%s WHERE id=%s", (v, tid))
     pid = project_of_task(con, tid)
     con.commit()
     recompute(con, pid)

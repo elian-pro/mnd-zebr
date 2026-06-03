@@ -257,6 +257,16 @@ function respCell(t){
     <option value="">+ depto</option>${avail.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("")}</select>`:"";
   return `<div class="rcell">${chips||'<span class="small" style="color:var(--muted)">—</span>'}${add}</div>`;
 }
+// celda "Inicio": editable solo si la tarea es secuencial (sin dependencia explícita)
+function startCell(t){
+  if(t.depends_on) return `<td class="dates" title="Sigue a la tarea de la que depende">${fmt(t.start_date)}</td>`;
+  const ov=t.start_override?String(t.start_override).slice(0,10):"";
+  const val=ov||String(t.start_date||"").slice(0,10);
+  const reset=ov?`<button class="ghostdel" style="padding:1px 5px;margin-left:3px" title="Volver a automático" onclick="updTask(${t.id},'start_override',null)">↺</button>`:"";
+  return `<td class="dates"><input type="date" value="${val}" style="width:120px;font-weight:${ov?'700':'400'}"
+    title="${ov?'Inicio fijado manualmente':'Inicio automático (secuencial). Cámbialo para fijarlo.'}"
+    onchange="updTask(${t.id},'start_override',this.value||null)">${reset}</td>`;
+}
 async function setResp(tid,dep,add){
   const t=findTask(tid); if(!t) return;
   let cur=respDepts(t);
@@ -285,7 +295,7 @@ function renderCrono(){
         <td><select class="status ${stClass(t.status)}" onchange="updTask(${t.id},'status',this.value)">
           ${STATUSES.map(s=>`<option ${t.status==s?'selected':''}>${s}</option>`).join("")}</select></td>
         <td class="col-days"><input type="number" step="0.5" min="0" value="${t.days}" onchange="updTask(${t.id},'days',parseFloat(this.value)||0)"></td>
-        <td class="dates">${fmt(t.start_date)}</td>
+        ${startCell(t)}
         <td class="dates">${fmt(t.end_date)}</td>
         <td>${respCell(t)}</td>
         <td><select onchange="updTask(${t.id},'depends_on',this.value?parseInt(this.value):null)">
