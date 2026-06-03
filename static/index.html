@@ -369,10 +369,10 @@ async function loadSummary(){
 }
 
 function personOptions(depto, current){
-  // gente del catálogo (pestaña Monday) que pertenece a este departamento
-  let list=PEOPLE_CAT.filter(p=>p.department===depto);
-  if(!list.length) list=PEOPLE_CAT;  // si nadie está asociado aún, mostramos todos
-  let opts=`<option value="">— elegir persona —</option>`, found=false;
+  // SOLO la gente del catálogo (pestaña Monday) asociada a ESTE departamento
+  const list=PEOPLE_CAT.filter(p=>p.department===depto);
+  const ph=list.length?'— elegir persona —':'— sin personas en este depto —';
+  let opts=`<option value="">${ph}</option>`, found=false;
   list.forEach(p=>{
     const sel=p.name===current; if(sel) found=true;
     const warn=p.monday_user_id?'':'  ⚠ sin user_id';
@@ -482,7 +482,7 @@ async function addTask(lid){await api(`/api/lines/${lid}/tasks`,{method:"POST",b
 async function renameLine(id,v){await api(`/api/lines/${id}`,{method:"PUT",body:JSON.stringify({name:v})});}
 async function delLine(id){if(!confirm("¿Quitar esta línea y sus tareas?"))return;await api(`/api/lines/${id}`,{method:"DELETE"});await loadProject(STATE.id);toast("Línea eliminada");}
 async function addLine(){await api(`/api/projects/${STATE.id}/lines`,{method:"POST",body:JSON.stringify({name:"Nueva línea de trabajo"})});await loadProject(STATE.id);}
-async function updResp(id,k,v){await api(`/api/responsibles/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});}
+async function updResp(id,k,v){await api(`/api/responsibles/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});if(k==='depto'){await loadProject(STATE.id);setTab('resp');render();}}
 async function delProject(){if(!confirm("¿Eliminar todo el proyecto?"))return;await api(`/api/projects/${STATE.id}`,{method:"DELETE"});TAB="crono";await boot();}
 function openTpl(){$("#tplName").value="";dlgTpl.showModal();}
 async function saveTemplate(){const n=$("#tplName").value.trim();if(!n){toast("Escribe un nombre");return;}await api("/api/templates",{method:"POST",body:JSON.stringify({project_id:STATE.id,name:n})});dlgTpl.close();toast("Plantilla guardada");}
