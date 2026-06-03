@@ -250,9 +250,10 @@ def monday_people():
     if request.method == "POST":
         d = request.json
         with con.cursor() as cur:
-            cur.execute("""INSERT INTO monday_people(name,monday_user_id) VALUES(%s,%s)
-                           ON CONFLICT (name) DO UPDATE SET monday_user_id=EXCLUDED.monday_user_id""",
-                        (d["name"], d.get("monday_user_id", "")))
+            cur.execute("""INSERT INTO monday_people(name,monday_user_id,department) VALUES(%s,%s,%s)
+                           ON CONFLICT (name) DO UPDATE SET monday_user_id=EXCLUDED.monday_user_id,
+                                                            department=EXCLUDED.department""",
+                        (d["name"], d.get("monday_user_id", ""), d.get("department", "")))
         con.commit(); con.close()
         return jsonify({"ok": True})
     with dict_cur(con) as cur:
@@ -269,7 +270,7 @@ def monday_person(pid):
             cur.execute("DELETE FROM monday_people WHERE id=%s", (pid,))
         else:
             d = request.json
-            for k in ("name", "monday_user_id"):
+            for k in ("name", "monday_user_id", "department"):
                 if k in d:
                     cur.execute(f"UPDATE monday_people SET {k}=%s WHERE id=%s", (d[k], pid))
     con.commit(); con.close()
@@ -281,9 +282,11 @@ def monday_departments():
     if request.method == "POST":
         d = request.json
         with con.cursor() as cur:
-            cur.execute("""INSERT INTO monday_departments(name,monday_label,monday_index) VALUES(%s,%s,%s)
-                           ON CONFLICT (name) DO UPDATE SET monday_label=EXCLUDED.monday_label, monday_index=EXCLUDED.monday_index""",
-                        (d["name"], d.get("monday_label", ""), d.get("monday_index")))
+            cur.execute("""INSERT INTO monday_departments(name,monday_label,monday_index,color) VALUES(%s,%s,%s,%s)
+                           ON CONFLICT (name) DO UPDATE SET monday_label=EXCLUDED.monday_label,
+                                                            monday_index=EXCLUDED.monday_index,
+                                                            color=EXCLUDED.color""",
+                        (d["name"], d.get("monday_label", ""), d.get("monday_index"), d.get("color", "")))
         con.commit(); con.close()
         return jsonify({"ok": True})
     with dict_cur(con) as cur:
@@ -300,7 +303,7 @@ def monday_department(did):
             cur.execute("DELETE FROM monday_departments WHERE id=%s", (did,))
         else:
             d = request.json
-            for k in ("name", "monday_label", "monday_index"):
+            for k in ("name", "monday_label", "monday_index", "color"):
                 if k in d:
                     cur.execute(f"UPDATE monday_departments SET {k}=%s WHERE id=%s", (d[k], did))
     con.commit(); con.close()
@@ -425,18 +428,33 @@ def build_payload(con, pid):
     proj = data["project"]
     cfg = get_config(con)
     with dict_cur(con) as cur:
-        cur.execute("SELECT name, monday_user_id FROM monday_people")
-        people_map = {r["name"]: r["monday_user_id"] for r in cur.fetchall()}
-        cur.execute("SELECT name, monday_label, monday_index FROM monday_departments")
-        dept_map = {r["name"]: {"label": r["monday_label"], "index": r["monday_index"]} for r in cur.fetchall()}
+        cur.execute("SELECT name, monday_user_id, department FROM monday_people")
+        people_rows = cur.fetchall()
+        cur.execute("SELECT name, monday_label, monday_index, color FROM monday_departments")
+        dept_map = {r["name"]: {"label": r["monday_label"], "index": r["monday_index"],
+                                "color": r["color"]} for r in cur.fetchall()}
 
-    def person_id(name):
-        # responsible puede traer varias personas separadas por coma; tomamos la primera mapeada
-        for part in (name or "").split(","):
+    people_map = {r["name"]: r["monday_user_id"] for r in people_rows}
+    # depto -> lista de user_ids de las personas (con id) que pertenecen a ese departamento
+    people_by_dept = {}
+    for r in people_rows:
+        if r["department"] and r["monday_user_id"]:
+            people_by_dept.setdefault(r["department"], []).append(r["monday_user_id"])
+
+    def person_ids(responsible):
+        # 'responsible' lista departamentos (y/o personas) separados por coma.
+        # Devuelve los user_id de todas las personas de esos deptos (o de la persona nombrada).
+        ids = []
+        for part in (responsible or "").split(","):
             part = part.strip()
-            if people_map.get(part):
-                return people_map[part]
-        return None
+            if not part:
+                continue
+            for uid in people_by_dept.get(part, []):
+                if uid not in ids:
+                    ids.append(uid)
+            if people_map.get(part) and people_map[part] not in ids:  # por si se nombró a la persona directo
+                ids.append(people_map[part])
+        return ids
 
     payload = {
         "board_id": cfg.get("monday_board_id", ""),
@@ -453,7 +471,7 @@ def build_payload(con, pid):
                 "description": t.get("description", ""),
                 "column_values": {
                     cfg.get("col_status", "status"): t["status"],
-                    cfg.get("col_person_esp", "person"): person_id(t["responsible"]),
+                    cfg.get("col_person_esp", "person"): person_ids(t["responsible"]),
                     cfg.get("col_department", "department"): dep_info.get("label"),
                     cfg.get("col_deadline", "date"): t["end_date"],
                     cfg.get("col_client", "client"): proj["client"],

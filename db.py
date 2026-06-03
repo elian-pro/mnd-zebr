@@ -66,18 +66,20 @@ CREATE TABLE IF NOT EXISTS responsibles(
   person TEXT DEFAULT '',
   email TEXT DEFAULT ''
 );
--- catálogo global de personas Zebra -> user_id de Monday
+-- catálogo global de personas Zebra -> user_id de Monday (cada persona pertenece a un depto)
 CREATE TABLE IF NOT EXISTS monday_people(
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
-  monday_user_id TEXT DEFAULT ''
+  monday_user_id TEXT DEFAULT '',
+  department TEXT DEFAULT ''
 );
--- catálogo global de departamentos -> label/índice de la columna status "Departamento"
+-- catálogo global de departamentos -> label/índice de la columna status "Departamento" + color
 CREATE TABLE IF NOT EXISTS monday_departments(
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   monday_label TEXT DEFAULT '',
-  monday_index INTEGER
+  monday_index INTEGER,
+  color TEXT DEFAULT ''
 );
 -- plantillas (solo estructura: líneas + tareas con días y dependencias)
 CREATE TABLE IF NOT EXISTS templates(
@@ -101,6 +103,17 @@ CREATE TABLE IF NOT EXISTS config(
 
 DEPTOS = ["Success M", "Media", "CRM", "iA", "Creativo", "Admin", "Cliente"]
 
+# color por defecto de cada departamento (se usa en la vista Gantt). Editable en la pestaña Monday.
+DEPTO_COLORS = {
+    "Success M": "#2563eb",
+    "Media":     "#c9a227",
+    "CRM":       "#1f9d55",
+    "iA":        "#7c3aed",
+    "Creativo":  "#e8590c",
+    "Admin":     "#0891b2",
+    "Cliente":   "#db2777",
+}
+
 # claves de configuración esperadas (column_ids del board de Monday)
 CONFIG_KEYS = [
     "monday_board_id",
@@ -116,9 +129,18 @@ def init_db():
     con = connect()
     with con.cursor() as cur:
         cur.execute(SCHEMA)
+        # migraciones suaves para bases ya existentes (CREATE IF NOT EXISTS no agrega columnas nuevas)
+        cur.execute("ALTER TABLE monday_people ADD COLUMN IF NOT EXISTS department TEXT DEFAULT ''")
+        cur.execute("ALTER TABLE monday_departments ADD COLUMN IF NOT EXISTS color TEXT DEFAULT ''")
         # sembrar claves de config vacías si no existen
         for k in CONFIG_KEYS:
             cur.execute("INSERT INTO config(key,value) VALUES(%s,'') ON CONFLICT (key) DO NOTHING", (k,))
+        # sembrar el catálogo de departamentos con color/índice por defecto
+        for i, dep in enumerate(DEPTOS):
+            cur.execute(
+                """INSERT INTO monday_departments(name,monday_label,monday_index,color)
+                   VALUES(%s,%s,%s,%s) ON CONFLICT (name) DO NOTHING""",
+                (dep, dep, i, DEPTO_COLORS.get(dep, "#6b7177")))
     con.commit()
     con.close()
 

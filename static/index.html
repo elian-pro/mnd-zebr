@@ -76,6 +76,27 @@
   .sechead{padding:11px 16px;background:var(--ink);color:#fff;font-weight:700;display:flex;justify-content:space-between;align-items:center}
   .help{font-size:11px;color:var(--muted);font-style:italic}
   a.dl{display:inline-block;text-decoration:none}
+  /* ---- Gantt ---- */
+  .gantt{display:flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:#fff;box-shadow:var(--shadow)}
+  .g-labels{flex:0 0 190px;border-right:1px solid var(--line);background:var(--soft)}
+  .g-scroll{flex:1;overflow-x:auto}
+  .g-axis{height:46px;display:flex;flex-direction:column;border-bottom:1px solid var(--line);background:var(--soft)}
+  .g-months{display:flex;height:22px}
+  .g-month{font-size:11px;font-weight:700;color:var(--ink);border-right:1px solid var(--line);padding:3px 6px;white-space:nowrap;overflow:hidden;text-transform:capitalize}
+  .g-days{display:flex;height:24px}
+  .g-day{flex:0 0 auto;font-size:10px;color:var(--muted);text-align:center;border-right:1px solid #eef0f2;line-height:24px}
+  .g-day.we{background:#f0f1f3}
+  .g-axis-spacer{height:46px;border-bottom:1px solid var(--line)}
+  .g-lab{height:40px;display:flex;align-items:center;padding:0 12px;font-size:12.5px;font-weight:600;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .g-row{height:40px;position:relative;border-bottom:1px solid var(--line)}
+  .g-row .we-bg{position:absolute;top:0;bottom:0;background:#f6f7f8}
+  .g-bar{position:absolute;top:8px;height:24px;border-radius:6px;color:#fff;font-size:11px;font-weight:600;line-height:24px;padding:0 7px;white-space:nowrap;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.15);cursor:default}
+  .g-bar.done{opacity:.55}
+  .g-milestone{position:absolute;top:10px;width:18px;height:18px;transform:rotate(45deg);border-radius:3px;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .g-legend{display:flex;flex-wrap:wrap;gap:12px;margin:12px 2px 0;font-size:12px;color:var(--muted)}
+  .g-legend span{display:inline-flex;align-items:center;gap:6px}
+  .g-dot{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .g-today{position:absolute;top:0;bottom:0;width:2px;background:var(--block);z-index:3}
 </style>
 </head>
 <body>
@@ -134,7 +155,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-let STATE=null, TAB="crono", TEMPLATES=[], CFG={config:{},keys:[]};
+let STATE=null, TAB="crono", TEMPLATES=[], CFG={config:{},keys:[]}, DEPTS_CAT=[];
 const STATUSES=["Pendiente","En proceso","Completado","Bloqueado"];
 const $=s=>document.querySelector(s);
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2300);}
@@ -168,7 +189,7 @@ async function createProject(){
   dlgNew.close(); $("#npClient").value="";
   await boot(); $("#projSel").value=r.id; loadProject(r.id); toast("Proyecto creado");
 }
-async function loadProject(id){STATE=await api(`/api/projects/${id}`);STATE.id=parseInt(id);CFG=await api("/api/config");render();}
+async function loadProject(id){STATE=await api(`/api/projects/${id}`);STATE.id=parseInt(id);CFG=await api("/api/config");DEPTS_CAT=await api("/api/monday/departments");render();}
 function setTab(t){TAB=t;}
 
 function render(){
@@ -188,11 +209,13 @@ function render(){
   </div>
   <div class="tabs">
     <button class="${TAB=='crono'?'act':''}" onclick="setTab('crono');render()">Cronograma</button>
+    <button class="${TAB=='gantt'?'act':''}" onclick="setTab('gantt');render()">Gantt</button>
     <button class="${TAB=='resumen'?'act':''}" onclick="setTab('resumen');render()">Resumen</button>
     <button class="${TAB=='resp'?'act':''}" onclick="setTab('resp');render()">Responsables</button>
     <button class="${TAB=='feriados'?'act':''}" onclick="setTab('feriados');render()">Feriados</button>
   </div>`;
   if(TAB=="crono") h+=renderCrono();
+  if(TAB=="gantt") h+=renderGantt();
   if(TAB=="resumen"){h+=`<div id="sumBox"><div class="empty">Calculando…</div></div>`;loadSummary();}
   if(TAB=="resp") h+=renderResp();
   if(TAB=="feriados"){h+=`<div id="holBox"><div class="empty">Cargando…</div></div>`;loadHolidays();}
@@ -235,6 +258,94 @@ function renderCrono(){
   });
   h+=`<button class="gold" onclick="addLine()">+ Agregar línea de trabajo paralela</button>`;
   return h;
+}
+
+// ---------- Gantt (líneas horizontales por fecha, color por departamento)
+const G_PALETTE=["#2563eb","#c9a227","#1f9d55","#7c3aed","#e8590c","#0891b2","#db2777","#475569"];
+function pd(s){return s?new Date(String(s).slice(0,10)+"T00:00:00"):null;}
+function dayDiff(a,b){return Math.round((a-b)/86400000);}
+function firstDept(resp){return (resp||"").split(",")[0].trim();}
+function deptColor(name){
+  if(!name) return "#9aa0a6";
+  const d=DEPTS_CAT.find(x=>x.name===name);
+  if(d&&d.color) return d.color;
+  const i=DEPTS_CAT.findIndex(x=>x.name===name);
+  return G_PALETTE[(i>=0?i:0)%G_PALETTE.length];
+}
+const MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+
+function renderGantt(){
+  // reunir tareas con fecha
+  let min=null,max=null;
+  STATE.lines.forEach(l=>l.tasks.forEach(t=>{
+    if(!t.start_date) return;
+    const s=pd(t.start_date), e=pd(t.end_date||t.start_date);
+    if(!min||s<min) min=s; if(!max||e>max) max=e;
+  }));
+  if(!min) return `<div class="card"><div class="empty">No hay tareas con fechas todavía.<br>Agrega días a las tareas en el Cronograma para verlas aquí.</div></div>`;
+
+  const DAY=24, total=dayDiff(max,min)+1, W=total*DAY;
+  const used=new Set();
+
+  // eje: meses + días
+  let months="", daysHtml="";
+  const segs=[]; // {label,count}
+  for(let i=0;i<total;i++){
+    const d=new Date(min.getTime()+i*86400000);
+    const we=d.getDay()===0||d.getDay()===6;
+    daysHtml+=`<div class="g-day${we?' we':''}" style="width:${DAY}px">${d.getDate()}</div>`;
+    const key=d.getMonth()+"-"+d.getFullYear();
+    if(!segs.length||segs[segs.length-1].key!==key)
+      segs.push({key,label:`${MESES[d.getMonth()]} ${d.getFullYear()}`,count:1});
+    else segs[segs.length-1].count++;
+  }
+  segs.forEach(s=>{months+=`<div class="g-month" style="width:${s.count*DAY}px">${s.label}</div>`;});
+
+  // marcador de hoy
+  const today=pd(new Date().toISOString().slice(0,10));
+  let todayMark="";
+  if(today>=min&&today<=max){const x=dayDiff(today,min)*DAY;todayMark=`<div class="g-today" style="left:${x}px"></div>`;}
+  // fondo de fines de semana (reutilizable por fila)
+  let weBg="";
+  for(let i=0;i<total;i++){
+    const d=new Date(min.getTime()+i*86400000);
+    if(d.getDay()===0||d.getDay()===6) weBg+=`<div class="we-bg" style="left:${i*DAY}px;width:${DAY}px"></div>`;
+  }
+
+  // etiquetas (izquierda) y filas (derecha) alineadas por índice de línea
+  let labs="", rows="";
+  STATE.lines.forEach(line=>{
+    labs+=`<div class="g-lab" title="${esc(line.name)}">${esc(line.name)}</div>`;
+    let bars="";
+    line.tasks.forEach(t=>{
+      if(!t.start_date) return;
+      const s=pd(t.start_date), e=pd(t.end_date||t.start_date);
+      const off=dayDiff(s,min)*DAY, dur=(dayDiff(e,s)+1)*DAY;
+      const dep=firstDept(t.responsible); used.add(dep||"(sin depto)");
+      const col=deptColor(dep);
+      const done=t.status==="Completado"?" done":"";
+      const tip=`${t.name} · ${dep||'sin depto'} · ${fmt(t.start_date)}→${fmt(t.end_date)} · ${t.status}`;
+      if(t.days&&t.days>0){
+        bars+=`<div class="g-bar${done}" style="left:${off}px;width:${Math.max(dur-3,14)}px;background:${col}" title="${esc(tip)}">${esc(t.name)}</div>`;
+      }else{
+        bars+=`<div class="g-milestone" style="left:${off}px;background:${col}" title="${esc(tip)}"></div>`;
+      }
+    });
+    rows+=`<div class="g-row" style="width:${W}px">${weBg}${todayMark}${bars}</div>`;
+  });
+
+  // leyenda de departamentos usados
+  let legend="";
+  used.forEach(dep=>{legend+=`<span><i class="g-dot" style="background:${deptColor(dep==='(sin depto)'?'':dep)}"></i>${esc(dep)}</span>`;});
+
+  return `<div class="gantt">
+    <div class="g-labels"><div class="g-axis-spacer"></div>${labs}</div>
+    <div class="g-scroll">
+      <div class="g-axis" style="width:${W}px"><div class="g-months">${months}</div><div class="g-days">${daysHtml}</div></div>
+      ${rows}
+    </div>
+  </div>
+  <div class="g-legend">${legend}<span style="margin-left:auto"><i class="g-dot" style="background:var(--block);width:2px;border-radius:0"></i>Hoy · ◆ hito (0 días)</span></div>`;
 }
 
 async function loadSummary(){
@@ -307,36 +418,45 @@ async function renderMondayTab(){
   });
   h+=`</div></div></div>`;
 
-  // personas
+  // opciones de departamento (para asociar personas)
+  const deptOpts=sel=>`<option value="">— sin depto —</option>`+depts.map(d=>`<option value="${esc(d.name)}" ${sel===d.name?'selected':''}>${esc(d.name)}</option>`).join("");
+
+  // personas (cada persona pertenece a un departamento)
   h+=`<div class="card"><div class="sechead"><span>Catálogo de personas → user_id de Monday</span></div>
-    <table><thead><tr><th style="width:45%">Persona (Zebra)</th><th>Monday user_id</th><th></th></tr></thead><tbody>`;
+    <p class="small" style="padding:8px 16px 0">Asocia cada persona a su departamento. Un departamento puede tener varias personas; al publicar, una tarea cuyo responsable sea un depto incluye a todas sus personas con user_id.</p>
+    <table><thead><tr><th style="width:34%">Persona (Zebra)</th><th>Departamento</th><th>Monday user_id</th><th></th></tr></thead><tbody>`;
   people.forEach(p=>{
     h+=`<tr><td><input value="${esc(p.name)}" onchange="updPerson(${p.id},'name',this.value)"></td>
+      <td><select onchange="updPerson(${p.id},'department',this.value)">${deptOpts(p.department||'')}</select></td>
       <td><input value="${esc(p.monday_user_id||'')}" placeholder="Ej. 12345678" onchange="updPerson(${p.id},'monday_user_id',this.value)"></td>
       <td><button class="ghostdel" onclick="delPerson(${p.id})">✕</button></td></tr>`;
   });
-  h+=`<tr class="add-row"><td><input id="npName" placeholder="Nombre"></td><td><input id="npUid" placeholder="user_id"></td>
+  h+=`<tr class="add-row"><td><input id="npName" placeholder="Nombre"></td>
+    <td><select id="npDept">${deptOpts('')}</select></td>
+    <td><input id="npUid" placeholder="user_id"></td>
     <td><button onclick="addPerson()">+ Agregar</button></td></tr></tbody></table></div>`;
 
-  // departamentos
-  h+=`<div class="card"><div class="sechead"><span>Catálogo de departamentos → label / índice de Monday</span></div>
-    <table><thead><tr><th style="width:34%">Departamento</th><th>Label en Monday</th><th>Índice</th><th></th></tr></thead><tbody>`;
+  // departamentos (con color para el Gantt)
+  h+=`<div class="card"><div class="sechead"><span>Catálogo de departamentos → label / índice de Monday + color</span></div>
+    <table><thead><tr><th style="width:30%">Departamento</th><th>Label en Monday</th><th>Índice</th><th>Color</th><th></th></tr></thead><tbody>`;
   depts.forEach(d=>{
     h+=`<tr><td><input value="${esc(d.name)}" onchange="updDept(${d.id},'name',this.value)"></td>
       <td><input value="${esc(d.monday_label||'')}" placeholder="Ej. Comercial" onchange="updDept(${d.id},'monday_label',this.value)"></td>
       <td><input type="number" value="${d.monday_index??''}" style="width:70px" onchange="updDept(${d.id},'monday_index',this.value?parseInt(this.value):null)"></td>
+      <td><input type="color" value="${d.color||'#6b7177'}" style="width:46px;height:30px;padding:2px" onchange="updDept(${d.id},'color',this.value)"></td>
       <td><button class="ghostdel" onclick="delDept(${d.id})">✕</button></td></tr>`;
   });
   h+=`<tr class="add-row"><td><input id="ndName" placeholder="Depto"></td><td><input id="ndLabel" placeholder="label"></td>
     <td><input id="ndIdx" type="number" placeholder="idx" style="width:70px"></td>
+    <td><input id="ndColor" type="color" value="#6b7177" style="width:46px;height:30px;padding:2px"></td>
     <td><button onclick="addDept()">+ Agregar</button></td></tr></tbody></table></div>`;
   $("#app").innerHTML=h;
 }
 async function saveCfg(k,v){await api("/api/config",{method:"PUT",body:JSON.stringify({[k]:v})});toast("Guardado");}
-async function addPerson(){const n=$("#npName").value.trim();if(!n)return;await api("/api/monday/people",{method:"POST",body:JSON.stringify({name:n,monday_user_id:$("#npUid").value})});renderMondayTab();}
+async function addPerson(){const n=$("#npName").value.trim();if(!n)return;await api("/api/monday/people",{method:"POST",body:JSON.stringify({name:n,monday_user_id:$("#npUid").value,department:$("#npDept").value})});renderMondayTab();}
 async function updPerson(id,k,v){await api(`/api/monday/people/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});}
 async function delPerson(id){await api(`/api/monday/people/${id}`,{method:"DELETE"});renderMondayTab();}
-async function addDept(){const n=$("#ndName").value.trim();if(!n)return;await api("/api/monday/departments",{method:"POST",body:JSON.stringify({name:n,monday_label:$("#ndLabel").value,monday_index:$("#ndIdx").value?parseInt($("#ndIdx").value):null})});renderMondayTab();}
+async function addDept(){const n=$("#ndName").value.trim();if(!n)return;await api("/api/monday/departments",{method:"POST",body:JSON.stringify({name:n,monday_label:$("#ndLabel").value,monday_index:$("#ndIdx").value?parseInt($("#ndIdx").value):null,color:$("#ndColor").value})});renderMondayTab();}
 async function updDept(id,k,v){await api(`/api/monday/departments/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});}
 async function delDept(id){await api(`/api/monday/departments/${id}`,{method:"DELETE"});renderMondayTab();}
 
