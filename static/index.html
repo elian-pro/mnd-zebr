@@ -155,7 +155,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-let STATE=null, TAB="crono", TEMPLATES=[], CFG={config:{},keys:[]}, DEPTS_CAT=[];
+let STATE=null, TAB="crono", TEMPLATES=[], CFG={config:{},keys:[]}, DEPTS_CAT=[], PEOPLE_CAT=[];
 const STATUSES=["Pendiente","En proceso","Completado","Bloqueado"];
 const $=s=>document.querySelector(s);
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2300);}
@@ -189,7 +189,7 @@ async function createProject(){
   dlgNew.close(); $("#npClient").value="";
   await boot(); $("#projSel").value=r.id; loadProject(r.id); toast("Proyecto creado");
 }
-async function loadProject(id){STATE=await api(`/api/projects/${id}`);STATE.id=parseInt(id);CFG=await api("/api/config");DEPTS_CAT=await api("/api/monday/departments");render();}
+async function loadProject(id){STATE=await api(`/api/projects/${id}`);STATE.id=parseInt(id);CFG=await api("/api/config");DEPTS_CAT=await api("/api/monday/departments");PEOPLE_CAT=await api("/api/monday/people");render();}
 function setTab(t){TAB=t;}
 
 function render(){
@@ -368,18 +368,32 @@ async function loadSummary(){
   const el=$("#sumBox"); if(el) el.innerHTML=h;
 }
 
+function personOptions(depto, current){
+  // gente del catálogo (pestaña Monday) que pertenece a este departamento
+  let list=PEOPLE_CAT.filter(p=>p.department===depto);
+  if(!list.length) list=PEOPLE_CAT;  // si nadie está asociado aún, mostramos todos
+  let opts=`<option value="">— elegir persona —</option>`, found=false;
+  list.forEach(p=>{
+    const sel=p.name===current; if(sel) found=true;
+    const warn=p.monday_user_id?'':'  ⚠ sin user_id';
+    opts+=`<option ${sel?'selected':''}>${esc(p.name)}${warn}</option>`;
+  });
+  if(current&&!found) opts+=`<option selected>${esc(current)}</option>`;  // conserva valor previo
+  return opts;
+}
+
 function renderResp(){
   let h=`<div class="card"><div class="sechead"><span>Responsables por departamento</span></div>
-    <table><thead><tr><th style="width:25%">Departamento</th><th>Persona</th><th>Email</th></tr></thead><tbody>`;
+    <table><thead><tr><th style="width:25%">Departamento</th><th>Persona (se dispara en Monday)</th><th>Email</th></tr></thead><tbody>`;
   STATE.responsibles.forEach(r=>{
     h+=`<tr>
       <td><input value="${esc(r.depto)}" onchange="updResp(${r.id},'depto',this.value)"></td>
-      <td><input value="${esc(r.person||'')}" placeholder="Nombre" onchange="updResp(${r.id},'person',this.value)"></td>
+      <td><select onchange="updResp(${r.id},'person',this.value)">${personOptions(r.depto, r.person||'')}</select></td>
       <td><input value="${esc(r.email||'')}" placeholder="correo@zebra.mx" onchange="updResp(${r.id},'email',this.value)"></td>
     </tr>`;
   });
   h+=`</tbody></table></div>
-  <p class="small">Tip: si escribes el nombre del depto exacto en el campo "Responsable" de una tarea, al publicar se traduce a la persona y user_id de Monday del catálogo.</p>`;
+  <p class="small">La <b>persona</b> que elijas aquí para cada departamento es la que se asigna en Monday al publicar (vía su <code>user_id</code>). La lista sale del catálogo de la pestaña ⚙ Monday; agrega ahí a la gente y su <code>user_id</code>, y asóciala a su departamento.</p>`;
   return h;
 }
 

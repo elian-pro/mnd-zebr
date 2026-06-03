@@ -433,6 +433,9 @@ def build_payload(con, pid):
         cur.execute("SELECT name, monday_label, monday_index, color FROM monday_departments")
         dept_map = {r["name"]: {"label": r["monday_label"], "index": r["monday_index"],
                                 "color": r["color"]} for r in cur.fetchall()}
+        # responsable elegido por departamento EN ESTE PROYECTO (pestaña Responsables)
+        cur.execute("SELECT depto, person FROM responsibles WHERE project_id=%s", (pid,))
+        proj_resp = {r["depto"]: (r["person"] or "").strip() for r in cur.fetchall()}
 
     people_map = {r["name"]: r["monday_user_id"] for r in people_rows}
     # depto -> lista de user_ids de las personas (con id) que pertenecen a ese departamento
@@ -442,18 +445,24 @@ def build_payload(con, pid):
             people_by_dept.setdefault(r["department"], []).append(r["monday_user_id"])
 
     def person_ids(responsible):
-        # 'responsible' lista departamentos (y/o personas) separados por coma.
-        # Devuelve los user_id de todas las personas de esos deptos (o de la persona nombrada).
+        # 'responsible' lista los departamentos (separados por coma) de la tarea.
+        # Para cada depto se usa la persona asignada en la pestaña Responsables del proyecto,
+        # traducida a su user_id de Monday. Si no hay asignada, cae al catálogo del depto.
         ids = []
+        def add(uid):
+            if uid and uid not in ids:
+                ids.append(uid)
         for part in (responsible or "").split(","):
-            part = part.strip()
-            if not part:
+            dep = part.strip()
+            if not dep:
                 continue
-            for uid in people_by_dept.get(part, []):
-                if uid not in ids:
-                    ids.append(uid)
-            if people_map.get(part) and people_map[part] not in ids:  # por si se nombró a la persona directo
-                ids.append(people_map[part])
+            assigned = proj_resp.get(dep, "")            # persona elegida para ese depto
+            if assigned and people_map.get(assigned):    # 1) asignada en el proyecto + con user_id
+                add(people_map[assigned])
+                continue
+            for uid in people_by_dept.get(dep, []):       # 2) fallback: catálogo del depto
+                add(uid)
+            add(people_map.get(dep))                      # 3) por si 'dep' nombra a la persona directo
         return ids
 
     payload = {
