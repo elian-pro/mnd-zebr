@@ -469,10 +469,15 @@ def build_payload(con, pid):
         return ids
 
     client = proj["client"]
+    try:
+        status_map = json.loads(cfg.get("status_map") or "{}")
+    except Exception:
+        status_map = {}
     payload = {
         "board_id": cfg.get("monday_board_id", ""),
         "board_name": f"Lanzamiento · {client}",
         "client": client,
+        "status_map": status_map,  # estatus de la app -> label o índice del board
         "columns": {  # rol lógico -> id de columna en Monday
             "status": cfg.get("col_status", ""),
             "person": cfg.get("col_person_esp", ""),
@@ -493,6 +498,7 @@ def build_payload(con, pid):
                 "status": t["status"],
                 "person_ids": person_ids(t["responsible"]),
                 "department": dep_info.get("label") or "",
+                "department_index": dep_info.get("index"),
                 "deadline": t["end_date"],
             })
         payload["groups"].append(g)
@@ -536,7 +542,13 @@ def push_to_monday(token, payload):
     Devuelve (creadas, [errores])."""
     board = str(payload["board_id"])
     cols = payload["columns"]
+    status_map = payload.get("status_map", {})
     created, errors = 0, []
+
+    def label_or_index(v):
+        # número -> {"index": n} ; texto -> {"label": "..."}
+        s = str(v).strip()
+        return {"index": int(s)} if s.lstrip("-").isdigit() else {"label": s}
     Q_GROUP = "mutation($b:ID!,$n:String!){create_group(board_id:$b,group_name:$n){id}}"
     Q_ITEM = ("mutation($b:ID!,$g:String,$n:String!,$c:JSON){"
               "create_item(board_id:$b,group_id:$g,item_name:$n,column_values:$c){id}}")
@@ -552,10 +564,16 @@ def push_to_monday(token, payload):
         time.sleep(MONDAY_DELAY)
         for it in g["items"]:
             cv = {}
-            if cols.get("status") and it.get("status"):
-                cv[cols["status"]] = {"label": it["status"]}
-            if cols.get("department") and it.get("department"):
-                cv[cols["department"]] = {"label": it["department"]}
+            # Estatus: solo si está mapeado al board (label o índice). Sin mapeo -> se omite.
+            mapped = status_map.get(it.get("status"), "")
+            if cols.get("status") and str(mapped).strip() != "":
+                cv[cols["status"]] = label_or_index(mapped)
+            # Departamento: label si existe, si no, índice del catálogo.
+            if cols.get("department"):
+                if it.get("department"):
+                    cv[cols["department"]] = {"label": it["department"]}
+                elif it.get("department_index") is not None:
+                    cv[cols["department"]] = {"index": it["department_index"]}
             if cols.get("deadline") and it.get("deadline"):
                 cv[cols["deadline"]] = {"date": str(it["deadline"])[:10]}
             if cols.get("client") and payload.get("client"):

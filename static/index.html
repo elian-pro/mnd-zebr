@@ -459,6 +459,14 @@ async function renderMondayTab(){
   });
   h+=`</div></div></div>`;
 
+  // mapeo de estatus -> label/índice del board
+  let smap={}; try{smap=JSON.parse(cfg.config.status_map||"{}");}catch(e){}
+  h+=`<div class="card"><div class="sechead"><span>Mapeo de estatus → Monday</span></div><div style="padding:16px">
+    <p class="small">Cada estatus de la app se traduce al <b>label</b> o <b>índice</b> de tu columna de Estatus en Monday. Escribe un <b>número</b> para usar índice (ej. <code>2</code>) o el <b>texto exacto</b> del label (ej. <code>En proceso</code>). Déjalo <b>vacío</b> para no escribir esa columna y dejar el estatus por defecto del board.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
+    ${STATUSES.map((s,i)=>`<div><label class="fl">${esc(s)}</label><input style="width:100%" id="sm_${i}" value="${esc(smap[s]||'')}" placeholder="label o índice" onchange="saveStatusMap()"></div>`).join("")}
+    </div></div></div>`;
+
   // opciones de departamento (para asociar personas)
   const deptOpts=sel=>`<option value="">— sin depto —</option>`+depts.map(d=>`<option value="${esc(d.name)}" ${sel===d.name?'selected':''}>${esc(d.name)}</option>`).join("");
 
@@ -494,6 +502,12 @@ async function renderMondayTab(){
   $("#app").innerHTML=h;
 }
 async function saveCfg(k,v){await api("/api/config",{method:"PUT",body:JSON.stringify({[k]:v})});toast("Guardado");}
+async function saveStatusMap(){
+  const m={};
+  STATUSES.forEach((s,i)=>{const el=document.getElementById('sm_'+i);const v=(el&&el.value||'').trim();if(v!=='')m[s]=v;});
+  await api("/api/config",{method:"PUT",body:JSON.stringify({status_map:JSON.stringify(m)})});
+  toast("Mapeo de estatus guardado");
+}
 async function addPerson(){const n=$("#npName").value.trim();if(!n)return;await api("/api/monday/people",{method:"POST",body:JSON.stringify({name:n,monday_user_id:$("#npUid").value,department:$("#npDept").value})});renderMondayTab();}
 async function updPerson(id,k,v){await api(`/api/monday/people/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});}
 async function delPerson(id){await api(`/api/monday/people/${id}`,{method:"DELETE"});renderMondayTab();}
