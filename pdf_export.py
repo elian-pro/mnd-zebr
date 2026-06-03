@@ -13,6 +13,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
                                  KeepTogether, Frame, PageTemplate, BaseDocTemplate)
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+from reportlab.lib.utils import ImageReader
+
+LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "logo.png")
 
 INK = colors.HexColor("#111315")
 GOLD = colors.HexColor("#C9A227")
@@ -59,13 +62,26 @@ def _header_footer(canvas, doc):
     # banda negra superior
     canvas.setFillColor(INK)
     canvas.rect(0, h - 70, w, 70, fill=1, stroke=0)
-    # logo ZEBRA con tracking
-    canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica-Bold", 20)
-    canvas.drawString(40, h - 42, "Z E B R A")
+    # logo Zebra (blanco) sobre la banda; fallback a texto si falta el archivo
+    drew_logo = False
+    if os.path.exists(LOGO):
+        try:
+            img = ImageReader(LOGO)
+            iw0, ih0 = img.getSize()
+            ih = 46
+            iw = ih * (iw0 / ih0) if ih0 else ih
+            canvas.drawImage(img, 40, h - 35 - ih / 2, width=iw, height=ih, mask="auto")
+            drew_logo = True
+        except Exception:
+            drew_logo = False
+    if not drew_logo:
+        canvas.setFillColor(colors.white)
+        canvas.setFont("Helvetica-Bold", 20)
+        canvas.drawString(40, h - 42, "Z E B R A")
+    # etiqueta a la derecha
     canvas.setFont("Helvetica", 7.5)
     canvas.setFillColor(colors.HexColor("#9AA0A6"))
-    canvas.drawString(40, h - 56, "I N T E L I G E N C I A   O P E R A T I V A   ·   C R O N O G R A M A")
+    canvas.drawRightString(w - 40, h - 42, "C R O N O G R A M A   D E   L A N Z A M I E N T O")
     # banda dorada
     canvas.setFillColor(GOLD)
     canvas.rect(0, h - 74, w, 4, fill=1, stroke=0)
