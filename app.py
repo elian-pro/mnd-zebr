@@ -544,9 +544,9 @@ def push_to_monday(token, payload):
         gid = None
         try:
             res = _monday_gql(token, Q_GROUP, {"b": board, "n": g["title"][:255]})
-            gid = (res.get("data") or {}).get("create_group", {}).get("id")
+            gid = ((res.get("data") or {}).get("create_group") or {}).get("id")
             if not gid:
-                errors.append(f"grupo «{g['title']}»: {res.get('errors')}")
+                errors.append(f"grupo «{g['title']}»: {res.get('errors') or res.get('error_message') or res}")
         except Exception as e:
             errors.append(f"grupo «{g['title']}»: {e}")
         time.sleep(MONDAY_DELAY)
@@ -566,10 +566,10 @@ def push_to_monday(token, payload):
             try:
                 res = _monday_gql(token, Q_ITEM,
                                   {"b": board, "g": gid, "n": it["name"][:255], "c": json.dumps(cv)})
-                if (res.get("data") or {}).get("create_item", {}).get("id"):
+                if ((res.get("data") or {}).get("create_item") or {}).get("id"):
                     created += 1
                 else:
-                    errors.append(f"ítem «{it['task']}»: {res.get('errors')}")
+                    errors.append(f"ítem «{it['task']}»: {res.get('errors') or res.get('error_message') or res}")
             except Exception as e:
                 errors.append(f"ítem «{it['task']}»: {e}")
             time.sleep(MONDAY_DELAY)  # de uno en uno, respetando límites de Monday
