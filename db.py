@@ -127,22 +127,27 @@ CONFIG_KEYS = [
 
 def init_db():
     con = connect()
-    with con.cursor() as cur:
-        cur.execute(SCHEMA)
-        # migraciones suaves para bases ya existentes (CREATE IF NOT EXISTS no agrega columnas nuevas)
-        cur.execute("ALTER TABLE monday_people ADD COLUMN IF NOT EXISTS department TEXT DEFAULT ''")
-        cur.execute("ALTER TABLE monday_departments ADD COLUMN IF NOT EXISTS color TEXT DEFAULT ''")
-        # sembrar claves de config vacías si no existen
-        for k in CONFIG_KEYS:
-            cur.execute("INSERT INTO config(key,value) VALUES(%s,'') ON CONFLICT (key) DO NOTHING", (k,))
-        # sembrar el catálogo de departamentos con color/índice por defecto
-        for i, dep in enumerate(DEPTOS):
-            cur.execute(
-                """INSERT INTO monday_departments(name,monday_label,monday_index,color)
-                   VALUES(%s,%s,%s,%s) ON CONFLICT (name) DO NOTHING""",
-                (dep, dep, i, DEPTO_COLORS.get(dep, "#6b7177")))
-    con.commit()
-    con.close()
+    try:
+        with con.cursor() as cur:
+            # serializa a los workers de gunicorn para evitar la carrera al crear tablas
+            # (duplicate key en pg_type cuando dos procesos hacen CREATE TABLE a la vez)
+            cur.execute("SELECT pg_advisory_xact_lock(811542)")
+            cur.execute(SCHEMA)
+            # migraciones suaves para bases ya existentes (CREATE IF NOT EXISTS no agrega columnas nuevas)
+            cur.execute("ALTER TABLE monday_people ADD COLUMN IF NOT EXISTS department TEXT DEFAULT ''")
+            cur.execute("ALTER TABLE monday_departments ADD COLUMN IF NOT EXISTS color TEXT DEFAULT ''")
+            # sembrar claves de config vacías si no existen
+            for k in CONFIG_KEYS:
+                cur.execute("INSERT INTO config(key,value) VALUES(%s,'') ON CONFLICT (key) DO NOTHING", (k,))
+            # sembrar el catálogo de departamentos con color/índice por defecto
+            for i, dep in enumerate(DEPTOS):
+                cur.execute(
+                    """INSERT INTO monday_departments(name,monday_label,monday_index,color)
+                       VALUES(%s,%s,%s,%s) ON CONFLICT (name) DO NOTHING""",
+                    (dep, dep, i, DEPTO_COLORS.get(dep, "#6b7177")))
+        con.commit()
+    finally:
+        con.close()
 
 def get_config(con):
     with dict_cur(con) as cur:

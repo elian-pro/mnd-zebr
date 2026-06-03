@@ -161,7 +161,8 @@ def project_of_line(con, lid):
 def project_of_task(con, tid):
     with dict_cur(con) as cur:
         cur.execute("SELECT l.project_id pid FROM tasks t JOIN lines l ON t.line_id=l.id WHERE t.id=%s", (tid,))
-        return cur.fetchone()["pid"]
+        row = cur.fetchone()
+        return row["pid"] if row else None
 
 @app.route("/api/lines/<int:lid>/tasks", methods=["POST"])
 def add_task(lid):
@@ -198,7 +199,8 @@ def del_task(tid):
     with con.cursor() as cur:
         cur.execute("DELETE FROM tasks WHERE id=%s", (tid,))
     con.commit()
-    recompute(con, pid)
+    if pid:
+        recompute(con, pid)
     con.close()
     return jsonify({"ok": True})
 
@@ -465,10 +467,18 @@ def build_payload(con, pid):
             add(people_map.get(dep))                      # 3) por si 'dep' nombra a la persona directo
         return ids
 
+    client = proj["client"]
     payload = {
         "board_id": cfg.get("monday_board_id", ""),
-        "columns": {k: cfg.get(k, "") for k in CONFIG_KEYS if k.startswith("col_")},
-        "board_name": f"Lanzamiento · {proj['client']}",
+        "board_name": f"Lanzamiento · {client}",
+        "client": client,
+        "columns": {  # rol lógico -> id de columna en Monday
+            "status": cfg.get("col_status", ""),
+            "person": cfg.get("col_person_esp", ""),
+            "department": cfg.get("col_department", ""),
+            "client": cfg.get("col_client", ""),
+            "deadline": cfg.get("col_deadline", ""),
+        },
         "groups": [],
     }
     for ln in data["lines"]:
@@ -476,18 +486,68 @@ def build_payload(con, pid):
         for t in ln["tasks"]:
             dep_info = dept_map.get((t.get("responsible") or "").split(",")[0].strip(), {})
             g["items"].append({
-                "name": t["name"],
+                "name": f"Lanzamiento | {client} | {t['name']}",
+                "task": t["name"],
                 "description": t.get("description", ""),
-                "column_values": {
-                    cfg.get("col_status", "status"): t["status"],
-                    cfg.get("col_person_esp", "person"): person_ids(t["responsible"]),
-                    cfg.get("col_department", "department"): dep_info.get("label"),
-                    cfg.get("col_deadline", "date"): t["end_date"],
-                    cfg.get("col_client", "client"): proj["client"],
-                },
+                "status": t["status"],
+                "person_ids": person_ids(t["responsible"]),
+                "department": dep_info.get("label") or "",
+                "deadline": t["end_date"],
             })
         payload["groups"].append(g)
     return payload
+
+# --------------------------------------------------------------------------- API Monday (mutations reales)
+def _monday_gql(token, query, variables):
+    import urllib.request
+    body = json.dumps({"query": query, "variables": variables}).encode()
+    req = urllib.request.Request(
+        "https://api.monday.com/v2", data=body,
+        headers={"Authorization": token, "Content-Type": "application/json", "API-Version": "2024-01"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode())
+
+def push_to_monday(token, payload):
+    """Crea un grupo por línea y un ítem por tarea en el board configurado.
+    Devuelve (creadas, [errores])."""
+    board = str(payload["board_id"])
+    cols = payload["columns"]
+    created, errors = 0, []
+    Q_GROUP = "mutation($b:ID!,$n:String!){create_group(board_id:$b,group_name:$n){id}}"
+    Q_ITEM = ("mutation($b:ID!,$g:String,$n:String!,$c:JSON){"
+              "create_item(board_id:$b,group_id:$g,item_name:$n,column_values:$c){id}}")
+    for g in payload["groups"]:
+        gid = None
+        try:
+            res = _monday_gql(token, Q_GROUP, {"b": board, "n": g["title"][:255]})
+            gid = (res.get("data") or {}).get("create_group", {}).get("id")
+            if not gid:
+                errors.append(f"grupo «{g['title']}»: {res.get('errors')}")
+        except Exception as e:
+            errors.append(f"grupo «{g['title']}»: {e}")
+        for it in g["items"]:
+            cv = {}
+            if cols.get("status") and it.get("status"):
+                cv[cols["status"]] = {"label": it["status"]}
+            if cols.get("department") and it.get("department"):
+                cv[cols["department"]] = {"label": it["department"]}
+            if cols.get("deadline") and it.get("deadline"):
+                cv[cols["deadline"]] = {"date": str(it["deadline"])[:10]}
+            if cols.get("client") and payload.get("client"):
+                cv[cols["client"]] = payload["client"]
+            ids = [int(x) for x in (it.get("person_ids") or []) if str(x).isdigit()]
+            if cols.get("person") and ids:
+                cv[cols["person"]] = {"personsAndTeams": [{"id": i, "kind": "person"} for i in ids]}
+            try:
+                res = _monday_gql(token, Q_ITEM,
+                                  {"b": board, "g": gid, "n": it["name"][:255], "c": json.dumps(cv)})
+                if (res.get("data") or {}).get("create_item", {}).get("id"):
+                    created += 1
+                else:
+                    errors.append(f"ítem «{it['task']}»: {res.get('errors')}")
+            except Exception as e:
+                errors.append(f"ítem «{it['task']}»: {e}")
+    return created, errors
 
 @app.route("/api/projects/<int:pid>/launch", methods=["POST"])
 def launch(pid):
@@ -500,21 +560,22 @@ def launch(pid):
     payload = build_payload(con, pid)
     token = os.environ.get("MONDAY_API_TOKEN", "").strip()
     ok, detail = False, ""
+    total = sum(len(g["items"]) for g in payload["groups"])
     if token and payload["board_id"]:
         try:
-            import urllib.request
-            # crea un grupo+items en el board configurado (mutation simplificada)
-            q = '{"query":"query{boards(ids:%s){name}}"}' % payload["board_id"]
-            req = urllib.request.Request("https://api.monday.com/v2", data=q.encode(),
-                headers={"Authorization": token, "Content-Type": "application/json"})
-            r = urllib.request.urlopen(req, timeout=15)
-            detail = "Conexión a Monday verificada. " + r.read().decode()[:120]
-            ok = True
+            created, errors = push_to_monday(token, payload)
+            ok = created > 0 and not errors
+            detail = f"Creadas {created}/{total} tarea(s) en Monday."
+            if errors:
+                detail += " Errores: " + " · ".join(str(e)[:140] for e in errors[:3])
+                if len(errors) > 3:
+                    detail += f" (+{len(errors)-3} más)"
         except Exception as e:
             detail = f"Error API Monday: {e}"
     else:
         ok = True
-        detail = "Modo simulación: payload generado y traducido a IDs. Configura MONDAY_API_TOKEN y Board ID para envío real."
+        detail = ("Modo simulación: payload generado y traducido a IDs. "
+                  "Configura MONDAY_API_TOKEN (variable de entorno) y el Board ID para envío real.")
 
     with con.cursor() as cur:
         cur.execute("UPDATE projects SET status='Lanzado', launched_at=now(), monday_payload=%s WHERE id=%s",
