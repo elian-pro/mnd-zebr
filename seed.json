@@ -1,0 +1,282 @@
+[
+ {
+  "line": "ONBOARDING Y PRODUCCIÓN",
+  "tasks": [
+   {
+    "name": "Primer contacto con cliente",
+    "dias": 0.0,
+    "resp": "Success M"
+   },
+   {
+    "name": "Creación de chats internos y externos",
+    "dias": 0.0,
+    "resp": "Success M"
+   },
+   {
+    "name": "Asignación de tablero",
+    "dias": 0.0,
+    "resp": "Success M"
+   },
+   {
+    "name": "Envío de formulario de inicio al cliente",
+    "dias": 0.0,
+    "resp": "Success M"
+   },
+   {
+    "name": "Recepción y revisión del formulario",
+    "dias": 1.0,
+    "resp": "Success M"
+   },
+   {
+    "name": "Junta inicial de Brief Creativo, Media & IA",
+    "dias": 1.0,
+    "resp": "Success M, Media, Creativo, iA"
+   },
+   {
+    "name": "Benchmark del proyecto",
+    "dias": 2.0,
+    "resp": "Success M, iA"
+   },
+   {
+    "name": "Creación de contenido estratégico\n- Guiones Educativos de lanzamiento\n- Guiones generales de adquisición",
+    "dias": 5.0,
+    "resp": "Creativo"
+   },
+   {
+    "name": "Revisión interna de contenido estratégico &\nEnvío de contenido a cliente para revisión",
+    "dias": 1.0,
+    "resp": "Success M"
+   },
+   {
+    "name": "Feedback de contenido por cliente",
+    "dias": 2.0,
+    "resp": "Cliente"
+   },
+   {
+    "name": "Ajustes finales y Vo.Bo. de Contenido Estratégico",
+    "dias": 2.0,
+    "resp": "Creativo, Cliente"
+   },
+   {
+    "name": "Scouting y propuesta de grabación",
+    "dias": 2.0,
+    "resp": "Creativo"
+   },
+   {
+    "name": "Vo.Bo. de Scouting",
+    "dias": 1.0,
+    "resp": "Cliente"
+   },
+   {
+    "name": "Creación de escaleta creativa para producción de Contenido para pauta",
+    "dias": 1.0,
+    "resp": "Creativo"
+   },
+   {
+    "name": "Junta de alineación con equipo de producción",
+    "dias": 1.0,
+    "resp": "Creativo, Cliente"
+   },
+   {
+    "name": "Creación y Grabación de Contenido estrategico",
+    "dias": 1.0,
+    "resp": "Cliente, Creativo"
+   },
+   {
+    "name": "Edición de contenido estratégico",
+    "dias": 6.0,
+    "resp": "Cliente"
+   },
+   {
+    "name": "Cambios y Vo.Bo. final de contenido",
+    "dias": 1.0,
+    "resp": "Cliente, Creativo"
+   },
+   {
+    "name": "Creación de contenido estratégico                                                                           - Redacción de bots para automatizaciones",
+    "dias": 2.0,
+    "resp": "Creativo"
+   },
+   {
+    "name": "Revisión interna de contenido estratégico",
+    "dias": 0.0,
+    "resp": "Success M, Creativo"
+   },
+   {
+    "name": "Envío de contenido a cliente para revisión",
+    "dias": 1.0,
+    "resp": "Success M, Creativo"
+   },
+   {
+    "name": "Feedback de contenido por cliente",
+    "dias": 2.0,
+    "resp": "Cliente"
+   },
+   {
+    "name": "Ajustes finales y Vo.Bo. de Contenido Estratégico",
+    "dias": 2.0,
+    "resp": "Creativo, Cliente"
+   }
+  ]
+ },
+ {
+  "line": "MEDIA BUYER",
+  "tasks": [
+   {
+    "name": "Solicitud de accesos a Meta Ads",
+    "dias": 2.0,
+    "resp": "Media, Success M"
+   },
+   {
+    "name": "Auditoría de activos comerciales *",
+    "dias": 5.0,
+    "resp": "Media"
+   },
+   {
+    "name": "Verificación de portafolio",
+    "dias": 7.0,
+    "resp": "Media"
+   },
+   {
+    "name": "Elaboración de estrategia de ads y calculadora inicial",
+    "dias": 5.0,
+    "resp": "Media"
+   },
+   {
+    "name": "Presentación de estrategia al cliente",
+    "dias": 1.0,
+    "resp": "Media, Success M"
+   },
+   {
+    "name": "Ajustes finales y Vo.Bo. de estrategia",
+    "dias": 1.0,
+    "resp": "Media, Cliente"
+   },
+   {
+    "name": "Alta de método de pago Meta Ads",
+    "dias": 1.0,
+    "resp": "Media, Cliente, Success M"
+   },
+   {
+    "name": "Verificación Whatsapp API",
+    "dias": 5.0,
+    "resp": "Media"
+   },
+   {
+    "name": "Alta de Método de pago Whatsapp API",
+    "dias": 1.0,
+    "resp": "Media"
+   },
+   {
+    "name": "Pre-Set Up de Campañas: Audiencias, Forms, Copys",
+    "dias": 3.0,
+    "resp": "Media, Cliente, Success M"
+   }
+  ]
+ },
+ {
+  "line": "CRM & IA",
+  "tasks": [
+   {
+    "name": "Brief inicial Funnel CRM",
+    "dias": 2.0,
+    "resp": "CRM, iA, Success M"
+   },
+   {
+    "name": "Cotización de licencias adicionales",
+    "dias": 1.0,
+    "resp": "Admin"
+   },
+   {
+    "name": "Apertura de licencias con periodo de prueba",
+    "dias": 1.0,
+    "resp": "Admin"
+   },
+   {
+    "name": "Configuración inicial de CRM *",
+    "dias": 2.0,
+    "resp": "CRM"
+   },
+   {
+    "name": "Llenado de base de conocimiento",
+    "dias": 3.0,
+    "resp": "Cliente"
+   },
+   {
+    "name": "Configuración de IA",
+    "dias": 3.0,
+    "resp": "iA"
+   },
+   {
+    "name": "Pruebas y ajustes de IA",
+    "dias": 5.0,
+    "resp": "iA"
+   },
+   {
+    "name": "Validación de Conexión WA API",
+    "dias": 1.0,
+    "resp": "CRM"
+   },
+   {
+    "name": "Carga de plantillas para automatización *",
+    "dias": 2.0,
+    "resp": "CRM"
+   },
+   {
+    "name": "Checklist general CRM + IA",
+    "dias": 1.0,
+    "resp": "CRM, iA"
+   },
+   {
+    "name": "Configuración de reporte de métricas",
+    "dias": 2.0,
+    "resp": "CRM, iA"
+   }
+  ]
+ },
+ {
+  "line": "CLOSING DEL PROYECTO",
+  "tasks": [
+   {
+    "name": "Pago de licencias adquiridas",
+    "dias": 1.0,
+    "resp": "Admin, Cliente, Success M"
+   },
+   {
+    "name": "Configuración final de campañas: Mapeos CRM, Configuraciones particulares, subir ads",
+    "dias": 1.0,
+    "resp": "Media, CRM"
+   },
+   {
+    "name": "Revisión de flujos completos",
+    "dias": 1.0,
+    "resp": "CRM, iA"
+   },
+   {
+    "name": "Capacitación CRM – Sesión 1 - USO DE HERRAMIENTA",
+    "dias": 1.0,
+    "resp": "CRM"
+   },
+   {
+    "name": "Checklist final de campañas",
+    "dias": 1.0,
+    "resp": "Media"
+   },
+   {
+    "name": "Test end-to-end (anuncio → CRM)",
+    "dias": 0.0,
+    "resp": "Media, CRM, iA"
+   },
+   {
+    "name": "Encendido de campañas y cierre de tablero de lanzamiento",
+    "dias": 1.0,
+    "resp": "Media"
+   },
+   {
+    "name": "Q&A uso de CRM (post-lanzamiento)",
+    "dias": 7.0,
+    "resp": "CRM, Success M"
+   }
+  ]
+ }
+]
