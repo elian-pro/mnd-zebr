@@ -113,8 +113,9 @@
     <div class="logo"><img src="/static/logo.png" alt="Zebra" class="logoimg"></div>
     <span class="small" style="color:#9aa0a6;letter-spacing:1px">CRONOGRAMA</span>
     <div class="sp"></div>
-    <select id="projSel" onchange="loadProject(this.value)"></select>
+    <select id="projSel" onchange="openProj(this.value)"></select>
     <button class="gold" onclick="openNewProj()">+ Nuevo proyecto</button>
+    <button onclick="setTab('manage');render()" id="btnManage" title="Proyectos y plantillas">📁 Proyectos</button>
     <button onclick="setTab('monday');render()" id="btnMonday" title="Configuración Monday">⚙ Monday</button>
   </div>
   <div class="goldline"></div>
@@ -216,6 +217,7 @@ function setTab(t){TAB=t;}
 
 function render(){
   if(TAB=="monday"){renderMondayTab();return;}
+  if(TAB=="manage"){renderManageTab();return;}
   if(!STATE){boot();return;}
   const p=STATE.project;
   let h=`<div class="bar">
@@ -467,6 +469,49 @@ async function addHoliday(){
   await loadProject(STATE.id); setTab('feriados'); render(); toast("Feriado agregado (fechas recalculadas)");
 }
 async function delHoliday(id){await api(`/api/holidays/${id}`,{method:"DELETE"});await loadProject(STATE.id);setTab('feriados');render();}
+
+// ---------- Administrar proyectos y plantillas
+async function renderManageTab(){
+  const projs=await api("/api/projects");
+  const tpls=await api("/api/templates");
+  let h=`<div class="bar"><button onclick="setTab('crono');boot()">← Volver al cronograma</button>
+    <div style="flex:1"></div><button class="gold" onclick="openNewProj()">+ Nuevo proyecto</button></div>`;
+
+  h+=`<div class="card"><div class="sechead"><span>Proyectos / Cronogramas</span><span class="small" style="color:#ccc">${projs.length}</span></div>
+    <table><thead><tr><th style="width:38%">Cliente</th><th>Estado</th><th>Inicio</th><th style="text-align:right">Acciones</th></tr></thead><tbody>`;
+  if(!projs.length) h+=`<tr><td colspan="4" class="small" style="padding:16px">No hay proyectos todavía.</td></tr>`;
+  projs.forEach(p=>{
+    h+=`<tr>
+      <td><b>${esc(p.client)}</b></td>
+      <td><span class="pill">${esc(p.status)}</span></td>
+      <td>${fmt(p.start_date)}/${String(p.start_date).slice(0,4)}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button onclick="openProj(${p.id})">✏️ Abrir / editar</button>
+        <a class="dl" href="/api/projects/${p.id}/pdf" target="_blank"><button>⬇ PDF</button></a>
+        <button class="ghostdel" onclick="delProjFromManage(${p.id})">Eliminar</button>
+      </td></tr>`;
+  });
+  h+=`</tbody></table></div>`;
+
+  h+=`<div class="card"><div class="sechead"><span>Plantillas (solo estructura)</span><span class="small" style="color:#ccc">${tpls.length}</span></div>
+    <table><thead><tr><th style="width:55%">Nombre</th><th>Creada</th><th style="text-align:right">Acciones</th></tr></thead><tbody>`;
+  if(!tpls.length) h+=`<tr><td colspan="3" class="small" style="padding:16px">No hay plantillas. Crea una desde un proyecto con el botón “Guardar como plantilla”.</td></tr>`;
+  tpls.forEach(t=>{
+    h+=`<tr><td><b>${esc(t.name)}</b></td>
+      <td>${fmt(t.created_at)}/${String(t.created_at).slice(0,4)}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="gold" onclick="newFromTemplate(${t.id})">+ Nuevo proyecto</button>
+        <button class="ghostdel" onclick="delTemplate(${t.id})">Eliminar</button>
+      </td></tr>`;
+  });
+  h+=`</tbody></table></div>
+  <p class="small">Las plantillas guardan solo la estructura (líneas, tareas, días, descripciones); no incluyen responsables, fechas ni estados.</p>`;
+  $("#app").innerHTML=h;
+}
+async function openProj(id){TAB='crono';await loadProject(id);const sel=$("#projSel");if(sel)sel.value=id;}
+async function delProjFromManage(id){if(!confirm("¿Eliminar todo el proyecto y sus tareas?"))return;await api(`/api/projects/${id}`,{method:"DELETE"});await boot();toast("Proyecto eliminado");setTab('manage');render();}
+async function delTemplate(id){if(!confirm("¿Eliminar esta plantilla?"))return;await api(`/api/templates/${id}`,{method:"DELETE"});toast("Plantilla eliminada");renderManageTab();}
+async function newFromTemplate(id){await openNewProj();const t=$("#npTemplate");if(t)t.value=String(id);}
 
 // ---------- Monday tab (config + catálogos)
 async function renderMondayTab(){
