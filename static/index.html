@@ -126,7 +126,9 @@
   <div class="dh">Nuevo proyecto <button onclick="dlgNew.close()">✕</button></div>
   <div class="db">
     <label class="fl">Nombre del cliente</label>
-    <input id="npClient" placeholder="Ej. Clínica Sonrisa" style="width:100%">
+    <input id="npClient" list="clientList" placeholder="Ej. Clínica Sonrisa" style="width:100%" autocomplete="off">
+    <datalist id="clientList"></datalist>
+    <div id="npClientHint" class="small" style="margin-top:4px"></div>
     <label class="fl">Fecha inicial</label>
     <input id="npStart" type="date" style="width:100%">
     <label class="fl">Partir de</label>
@@ -186,7 +188,19 @@ async function openNewProj(){
   TEMPLATES=await api("/api/templates");
   const t=$("#npTemplate");
   t.innerHTML='<option value="">Estructura original (del Excel)</option>'+TEMPLATES.map(x=>`<option value="${x.id}">Plantilla: ${esc(x.name)}</option>`).join("");
+  loadClientOptions();
   dlgNew.showModal();
+}
+async function loadClientOptions(){
+  const dl=$("#clientList"), hint=$("#npClientHint"); dl.innerHTML=""; hint.textContent="";
+  try{
+    const r=await api("/api/monday/clients");
+    if(!r.configured){hint.textContent="Configura Board ID y la columna Cliente en ⚙ Monday para traer la lista.";return;}
+    dl.innerHTML=(r.clients||[]).map(c=>`<option value="${esc(c)}">`).join("");
+    hint.textContent=r.error?("No se pudo leer la lista: "+r.error)
+      :(r.clients&&r.clients.length?`${r.clients.length} cliente(s) en Monday. Si escribes uno nuevo, se crea al publicar.`
+       :"Sin clientes en el board todavía; el que escribas se crea al publicar.");
+  }catch(e){hint.textContent="";}
 }
 async function createProject(){
   const client=$("#npClient").value.trim(), start=$("#npStart").value, tpl=$("#npTemplate").value;

@@ -312,6 +312,33 @@ def monday_department(did):
     con.commit(); con.close()
     return jsonify({"ok": True})
 
+# --------------------------------------------------------------------------- clientes (opciones del dropdown en Monday)
+@app.route("/api/monday/clients", methods=["GET"])
+def monday_clients():
+    con = connect()
+    cfg = get_config(con)
+    con.close()
+    token = os.environ.get("MONDAY_API_TOKEN", "").strip()
+    board, col = cfg.get("monday_board_id", ""), cfg.get("col_client", "")
+    if not (token and board and col):
+        return jsonify({"clients": [], "configured": False})
+    try:
+        res = _monday_gql(token,
+            "query($b:[ID!]){boards(ids:$b){columns{id type settings_str}}}", {"b": [str(board)]})
+        boards = (res.get("data") or {}).get("boards") or []
+        cols = (boards[0].get("columns") if boards else []) or []
+        target = next((c for c in cols if c.get("id") == col), None)
+        names = []
+        if target and target.get("settings_str"):
+            labels = json.loads(target["settings_str"]).get("labels")
+            if isinstance(labels, dict):        # status: {"0":"Nombre"}
+                names = [v for v in labels.values() if v]
+            elif isinstance(labels, list):      # dropdown: [{"id":1,"name":"Nombre"}]
+                names = [l.get("name") for l in labels if l.get("name")]
+        return jsonify({"clients": sorted(names), "configured": True})
+    except Exception as e:
+        return jsonify({"clients": [], "configured": True, "error": str(e)})
+
 # --------------------------------------------------------------------------- config (board_id, column_ids)
 @app.route("/api/config", methods=["GET", "PUT"])
 def config():
@@ -551,7 +578,7 @@ def push_to_monday(token, payload):
         return {"index": int(s)} if s.lstrip("-").isdigit() else {"label": s}
     Q_GROUP = "mutation($b:ID!,$n:String!){create_group(board_id:$b,group_name:$n){id}}"
     Q_ITEM = ("mutation($b:ID!,$g:String,$n:String!,$c:JSON){"
-              "create_item(board_id:$b,group_id:$g,item_name:$n,column_values:$c){id}}")
+              "create_item(board_id:$b,group_id:$g,item_name:$n,column_values:$c,create_labels_if_missing:true){id}}")
     for g in payload["groups"]:
         gid = None
         try:
@@ -577,7 +604,9 @@ def push_to_monday(token, payload):
             if cols.get("deadline") and it.get("deadline"):
                 cv[cols["deadline"]] = {"date": str(it["deadline"])[:10]}
             if cols.get("client") and payload.get("client"):
-                cv[cols["client"]] = payload["client"]
+                # la columna Cliente del board es un dropdown -> {"labels":[...]}
+                # (create_labels_if_missing crea la opción si el cliente aún no existe)
+                cv[cols["client"]] = {"labels": [payload["client"]]}
             ids = [int(x) for x in (it.get("person_ids") or []) if str(x).isdigit()]
             if cols.get("person") and ids:
                 cv[cols["person"]] = {"personsAndTeams": [{"id": i, "kind": "person"} for i in ids]}
