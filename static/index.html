@@ -163,6 +163,14 @@
   <div class="df" id="launchFoot"><button onclick="dlgLaunch.close()">Cerrar</button></div>
 </dialog>
 
+<!-- confirmar (en lugar de window.confirm, que algunos navegadores bloquean) -->
+<dialog id="dlgConfirm">
+  <div class="dh"><span id="confTitle">Confirmar</span> <button onclick="confResolve(false)">✕</button></div>
+  <div class="db"><p id="confMsg" style="margin:0;line-height:1.4"></p></div>
+  <div class="df"><button onclick="confResolve(false)">Cancelar</button>
+    <button class="ghostdel" id="confOk" style="padding:8px 13px" onclick="confResolve(true)">Eliminar</button></div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -170,6 +178,14 @@ let STATE=null, TAB="crono", TEMPLATES=[], CFG={config:{},keys:[]}, DEPTS_CAT=[]
 const STATUSES=["Pendiente","En proceso","Completado","Bloqueado"];
 const $=s=>document.querySelector(s);
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2300);}
+// confirmación propia (window.confirm puede estar bloqueado por el navegador)
+let _confRes=null;
+function confirmDialog(msg,okLabel){
+  $("#confMsg").textContent=msg; $("#confOk").textContent=okLabel||"Eliminar";
+  try{dlgConfirm.showModal();}catch(e){}
+  return new Promise(res=>{_confRes=res;});
+}
+function confResolve(v){const r=_confRes;_confRes=null;try{dlgConfirm.close();}catch(e){}if(r)r(v);}
 async function api(url,opt){const r=await fetch(url,Object.assign({headers:{"Content-Type":"application/json"}},opt));return r.json();}
 function fmt(d){if(!d)return "—";const p=String(d).slice(0,10).split("-");return `${p[2]}/${p[1]}`;}
 function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
@@ -509,8 +525,8 @@ async function renderManageTab(){
   $("#app").innerHTML=h;
 }
 async function openProj(id){TAB='crono';await loadProject(id);const sel=$("#projSel");if(sel)sel.value=id;}
-async function delProjFromManage(id){if(!confirm("¿Eliminar todo el proyecto y sus tareas?"))return;await api(`/api/projects/${id}`,{method:"DELETE"});await boot();toast("Proyecto eliminado");setTab('manage');render();}
-async function delTemplate(id){if(!confirm("¿Eliminar esta plantilla?"))return;await api(`/api/templates/${id}`,{method:"DELETE"});toast("Plantilla eliminada");renderManageTab();}
+async function delProjFromManage(id){if(!await confirmDialog("¿Eliminar todo el proyecto y sus tareas?"))return;await api(`/api/projects/${id}`,{method:"DELETE"});await boot();toast("Proyecto eliminado");setTab('manage');render();}
+async function delTemplate(id){if(!await confirmDialog("¿Eliminar esta plantilla?"))return;await api(`/api/templates/${id}`,{method:"DELETE"});toast("Plantilla eliminada");renderManageTab();}
 async function newFromTemplate(id){await openNewProj();const t=$("#npTemplate");if(t)t.value=String(id);}
 
 // ---------- Monday tab (config + catálogos)
@@ -591,10 +607,10 @@ async function updTask(id,k,v){await api(`/api/tasks/${id}`,{method:"PUT",body:J
 async function delTask(id){await api(`/api/tasks/${id}`,{method:"DELETE"});await loadProject(STATE.id);toast("Tarea eliminada");}
 async function addTask(lid){await api(`/api/lines/${lid}/tasks`,{method:"POST",body:JSON.stringify({name:"Nueva tarea",days:1})});await loadProject(STATE.id);}
 async function renameLine(id,v){await api(`/api/lines/${id}`,{method:"PUT",body:JSON.stringify({name:v})});}
-async function delLine(id){if(!confirm("¿Quitar esta línea y sus tareas?"))return;await api(`/api/lines/${id}`,{method:"DELETE"});await loadProject(STATE.id);toast("Línea eliminada");}
+async function delLine(id){if(!await confirmDialog("¿Quitar esta línea y sus tareas?"))return;await api(`/api/lines/${id}`,{method:"DELETE"});await loadProject(STATE.id);toast("Línea eliminada");}
 async function addLine(){await api(`/api/projects/${STATE.id}/lines`,{method:"POST",body:JSON.stringify({name:"Nueva línea de trabajo"})});await loadProject(STATE.id);}
 async function updResp(id,k,v){await api(`/api/responsibles/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});if(k==='depto'){await loadProject(STATE.id);setTab('resp');render();}}
-async function delProject(){if(!confirm("¿Eliminar todo el proyecto?"))return;await api(`/api/projects/${STATE.id}`,{method:"DELETE"});TAB="crono";await boot();}
+async function delProject(){if(!await confirmDialog("¿Eliminar todo el proyecto?"))return;await api(`/api/projects/${STATE.id}`,{method:"DELETE"});TAB="crono";await boot();}
 function openTpl(){$("#tplName").value="";dlgTpl.showModal();}
 async function saveTemplate(){const n=$("#tplName").value.trim();if(!n){toast("Escribe un nombre");return;}await api("/api/templates",{method:"POST",body:JSON.stringify({project_id:STATE.id,name:n})});dlgTpl.close();toast("Plantilla guardada");}
 
