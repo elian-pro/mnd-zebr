@@ -127,9 +127,9 @@
 <dialog id="dlgNew">
   <div class="dh">Nuevo proyecto <button onclick="dlgNew.close()">✕</button></div>
   <div class="db">
-    <label class="fl">Cliente</label>
-    <div id="npClientField"><input id="npClient" placeholder="Cargando clientes…" style="width:100%" autocomplete="off"></div>
-    <div id="npClientHint" class="small" style="margin-top:4px"></div>
+    <label class="fl">Nombre del cliente</label>
+    <input id="npClient" placeholder="Ej. Clínica Sonrisa" style="width:100%" autocomplete="off">
+    <div class="small" style="margin-top:4px">Se crea como cliente nuevo en Monday al publicar.</div>
     <label class="fl">Fecha inicial</label>
     <input id="npStart" type="date" style="width:100%">
     <label class="fl">Partir de</label>
@@ -205,25 +205,7 @@ async function openNewProj(){
   TEMPLATES=await api("/api/templates");
   const t=$("#npTemplate");
   t.innerHTML='<option value="">Estructura original (del Excel)</option>'+TEMPLATES.map(x=>`<option value="${x.id}">Plantilla: ${esc(x.name)}</option>`).join("");
-  loadClientOptions();
   dlgNew.showModal();
-}
-async function loadClientOptions(){
-  const field=$("#npClientField"), hint=$("#npClientHint"); hint.textContent="";
-  try{
-    const r=await api("/api/monday/clients");
-    if(r.configured && (r.clients||[]).length){
-      field.innerHTML=`<select id="npClient" style="width:100%"><option value="">— elige un cliente —</option>`
-        +r.clients.map(c=>`<option>${esc(c)}</option>`).join("")+`</select>`;
-      hint.textContent=`${r.clients.length} cliente(s) de Monday. Para agregar uno nuevo, créalo primero en Monday.`;
-    }else{
-      field.innerHTML=`<input id="npClient" placeholder="Ej. Clínica Sonrisa" style="width:100%" autocomplete="off">`;
-      hint.textContent=r.configured?(r.error?("No se pudo leer la lista: "+r.error):"Sin clientes en el board; escribe el nombre.")
-        :"Configura Board ID y la columna Cliente en ⚙ Monday para traer la lista.";
-    }
-  }catch(e){
-    field.innerHTML=`<input id="npClient" placeholder="Ej. Clínica Sonrisa" style="width:100%" autocomplete="off">`;
-  }
 }
 async function createProject(){
   const client=$("#npClient").value.trim(), start=$("#npStart").value, tpl=$("#npTemplate").value;
