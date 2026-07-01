@@ -184,7 +184,7 @@ def update_task(tid):
     d = request.json
     con = connect()
     with con.cursor() as cur:
-        for k in ("name", "description", "days", "status", "responsible", "depends_on", "start_override"):
+        for k in ("name", "description", "days", "status", "responsible", "depends_on", "start_override", "to_monday"):
             if k in d:
                 v = d[k]
                 if k == "start_override" and not v:   # "" o null -> volver a automático
@@ -521,6 +521,8 @@ def build_payload(con, pid):
     group = {"title": client, "items": []}
     for ln in data["lines"]:
         for t in ln["tasks"]:
+            if not t.get("to_monday", True):   # tareas desmarcadas no se crean en Monday
+                continue
             dep_info = dept_map.get((t.get("responsible") or "").split(",")[0].strip(), {})
             group["items"].append({
                 "name": f"Lanzamiento | {client} | {t['name']}",

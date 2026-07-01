@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS tasks(
   position INTEGER NOT NULL,
   depends_on INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
   start_override DATE,
+  to_monday BOOLEAN DEFAULT TRUE,
   start_date DATE,
   end_date DATE
 );
@@ -138,6 +139,7 @@ def init_db():
             cur.execute("ALTER TABLE monday_people ADD COLUMN IF NOT EXISTS department TEXT DEFAULT ''")
             cur.execute("ALTER TABLE monday_departments ADD COLUMN IF NOT EXISTS color TEXT DEFAULT ''")
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_override DATE")
+            cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS to_monday BOOLEAN DEFAULT TRUE")
             # sembrar claves de config vacías si no existen
             for k in CONFIG_KEYS:
                 cur.execute("INSERT INTO config(key,value) VALUES(%s,'') ON CONFLICT (key) DO NOTHING", (k,))

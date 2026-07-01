@@ -289,7 +289,7 @@ function renderCrono(){
       <span class="small" style="color:#ccc">${line.tasks.length} tareas</span><div style="flex:1"></div>
       <button class="ghostdel" style="background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.2)" onclick="delLine(${line.id})">Quitar línea</button>
     </div><table><thead><tr>
-      <th style="width:32%">Tarea / descripción</th><th>Estado</th><th>Días</th><th>Inicio</th><th>Final</th><th>Responsable</th><th>Depende de</th><th></th>
+      <th style="width:32%">Tarea / descripción</th><th>Estado</th><th>Días</th><th>Inicio</th><th>Final</th><th>Responsable</th><th>Depende de</th><th title="Crear en Monday al publicar" style="text-align:center">Monday</th><th></th>
     </tr></thead><tbody>`;
     line.tasks.forEach(t=>{
       const deps=allTasks().filter(x=>x.id!=t.id);
@@ -308,10 +308,11 @@ function renderCrono(){
           <option value="">Secuencial</option>
           ${deps.map(d=>`<option value="${d.id}" ${t.depends_on==d.id?'selected':''}>${esc(d.name)}</option>`).join("")}
         </select></td>
+        <td style="text-align:center"><input type="checkbox" ${t.to_monday!==false?'checked':''} title="Crear esta tarea en Monday al publicar" onchange="updTask(${t.id},'to_monday',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>
         <td><button class="ghostdel" onclick="delTask(${t.id})">✕</button></td>
       </tr>`;
     });
-    h+=`<tr class="add-row"><td colspan="8"><button onclick="addTask(${line.id})">+ Agregar tarea</button></td></tr></tbody></table></div>`;
+    h+=`<tr class="add-row"><td colspan="9"><button onclick="addTask(${line.id})">+ Agregar tarea</button></td></tr></tbody></table></div>`;
   });
   h+=`<button class="gold" onclick="addLine()">+ Agregar línea de trabajo paralela</button>`;
   return h;
