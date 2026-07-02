@@ -153,6 +153,16 @@ def del_line(lid):
     con.commit(); con.close()
     return jsonify({"ok": True})
 
+# marcar/desmarcar "crear en Monday" para todas las tareas de una línea
+@app.route("/api/lines/<int:lid>/monday", methods=["PUT"])
+def set_line_monday(lid):
+    v = bool(request.json.get("value", True))
+    con = connect()
+    with con.cursor() as cur:
+        cur.execute("UPDATE tasks SET to_monday=%s WHERE line_id=%s", (v, lid))
+    con.commit(); con.close()
+    return jsonify({"ok": True})
+
 # --------------------------------------------------------------------------- tareas
 def project_of_line(con, lid):
     with dict_cur(con) as cur:

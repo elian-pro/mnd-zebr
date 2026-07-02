@@ -287,6 +287,9 @@ function renderCrono(){
     h+=`<div class="card"><div class="line-head">
       <input value="${esc(line.name)}" onchange="renameLine(${line.id},this.value)">
       <span class="small" style="color:#ccc">${line.tasks.length} tareas</span><div style="flex:1"></div>
+      <span class="small" style="color:#ccc">Monday:</span>
+      <button style="padding:4px 9px;font-size:12px" title="Marcar todas para Monday" onclick="setLineMonday(${line.id},true)">✓ Todos</button>
+      <button style="padding:4px 9px;font-size:12px" title="Desmarcar todas" onclick="setLineMonday(${line.id},false)">✕ Ninguno</button>
       <button class="ghostdel" style="background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.2)" onclick="delLine(${line.id})">Quitar línea</button>
     </div><table><thead><tr>
       <th style="width:32%">Tarea / descripción</th><th>Estado</th><th>Días</th><th>Inicio</th><th>Final</th><th>Responsable</th><th>Depende de</th><th title="Crear en Monday al publicar" style="text-align:center">Monday</th><th></th>
@@ -597,6 +600,7 @@ async function addTask(lid){await api(`/api/lines/${lid}/tasks`,{method:"POST",b
 async function renameLine(id,v){await api(`/api/lines/${id}`,{method:"PUT",body:JSON.stringify({name:v})});}
 async function delLine(id){if(!await confirmDialog("¿Quitar esta línea y sus tareas?"))return;await api(`/api/lines/${id}`,{method:"DELETE"});await loadProject(STATE.id);toast("Línea eliminada");}
 async function addLine(){await api(`/api/projects/${STATE.id}/lines`,{method:"POST",body:JSON.stringify({name:"Nueva línea de trabajo"})});await loadProject(STATE.id);}
+async function setLineMonday(lid,val){await api(`/api/lines/${lid}/monday`,{method:"PUT",body:JSON.stringify({value:val})});await loadProject(STATE.id);toast(val?"Todas marcadas para Monday":"Todas desmarcadas");}
 async function updResp(id,k,v){await api(`/api/responsibles/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});if(k==='depto'){await loadProject(STATE.id);setTab('resp');render();}}
 async function delProject(){if(!await confirmDialog("¿Eliminar todo el proyecto?"))return;await api(`/api/projects/${STATE.id}`,{method:"DELETE"});TAB="crono";await boot();}
 function openTpl(){$("#tplName").value="";dlgTpl.showModal();}
