@@ -43,39 +43,55 @@ Abre http://localhost:5000
 
 ---
 
-## Qué hace
+## Cómo funciona (explicación completa)
+
+👉 Lee **[COMO_FUNCIONA.md](COMO_FUNCIONA.md)** para una explicación en lenguaje
+natural de todo el sistema: el modelo mental, el flujo completo, el motor de
+fechas, la integración con Monday y el modelo de datos.
+
+---
+
+## Qué hace (resumen)
 
 **Cronograma**
-- Panel editable en línea: tareas, días, estado, responsable, descripción.
-- **Cascada automática**: cambias los días de una tarea y se recalculan las fechas
-  de las que dependen. Salta fines de semana **y feriados**.
-- **Dependencias**: cada tarea sigue a la anterior de su línea ("Secuencial") o puede
-  depender de cualquier otra tarea (incluso de otra línea).
-- Agregar / renombrar / quitar líneas paralelas y tareas.
+- Panel editable en línea: tareas, días, estado, descripción.
+- **Cascada automática** de fechas: cambias los días y se recalcula todo lo que
+  sigue. Salta fines de semana **y feriados**.
+- **Dependencias**: cada tarea sigue a la anterior ("Secuencial") o depende de
+  cualquier otra tarea (incluso de otra línea).
+- **Fecha de inicio manual** (override) para tareas secuenciales, con botón ↺ para
+  volver a automático.
+- **Responsable = departamentos** como etiquetas de color (varios por tarea).
+- **Check "crear en Monday"** por tarea, con botones *✓ Todos / ✕ Ninguno* por línea.
 
-**Resumen** — avance %, fechas y días por línea + arranque/cierre global. Se guarda en BD.
+**Gantt** — líneas horizontales (barras por fecha), coloreadas por departamento,
+con marcador de hoy y sombreado de fines de semana.
 
-**Responsables** — persona y email por departamento del proyecto.
+**Resumen** — avance %, fechas y días por línea + arranque/cierre global.
+
+**Responsables** — por departamento, eliges la **persona** (del catálogo) que se
+asignará en Monday al publicar.
 
 **Feriados** — lista editable de días inhábiles que la cascada respeta.
 
-**Monday (⚙ en la barra superior)**
-- **Board ID + IDs de columnas** del board destino.
-- **Catálogo de personas** → user_id de Monday.
-- **Catálogo de departamentos** → label / índice de la columna status.
-- Al publicar, los responsables y deptos se **traducen a esos IDs**.
+**📁 Proyectos** — vista para listar, abrir/editar, exportar PDF y **eliminar**
+proyectos y plantillas.
 
-**Plantillas** — "Guardar como plantilla" congela la estructura (líneas, tareas, días,
-descripciones; sin responsables/fechas/estados). Al crear un proyecto nuevo eliges
-partir de una plantilla o de la estructura original del Excel.
+**⚙ Monday** — Board ID, IDs de columnas, **mapeo de estatus** (label o índice),
+catálogo de personas (con departamento y `user_id`) y catálogo de departamentos
+(con color, label e índice).
 
-**PDF** — botón ⬇ PDF exporta el cronograma con la identidad Zebra (logo, banda dorada,
-cards de métricas, tablas, descripciones de tareas).
+**Plantillas** — "Guardar como plantilla" congela la estructura (líneas, tareas,
+días, descripciones; sin responsables/fechas/estados) para reutilizarla.
 
-**Publicar a Monday** — valida primero (tareas sin responsable, deptos/personas sin
-mapeo, board sin configurar), arma el payload con IDs traducidos, lo guarda en BD y
-marca el proyecto como Lanzado. Con `MONDAY_API_TOKEN` + Board ID hace la llamada real;
-sin ellos, queda en modo simulación mostrando el payload.
+**PDF** — exporta el cronograma con la identidad Zebra (logo, banda dorada, cards
+de métricas, tablas).
+
+**Publicar a Monday** — valida, traduce responsables/deptos/estatus a los IDs de
+Monday, crea **un grupo con el nombre del cliente** y un ítem por tarea marcada
+(título `Lanzamiento | {cliente} | {tarea}`). Crea el cliente/labels que falten
+(`create_labels_if_missing`), envía **de una en una** con reintento por límite de
+tasa, y reporta *"Creadas X/Y"* con los errores exactos de Monday si los hay.
 
 ---
 
@@ -83,29 +99,28 @@ sin ellos, queda en modo simulación mostrando el payload.
 
 ```
 .
-├── app.py            # Endpoints Flask
-├── db.py             # Conexión Postgres + esquema
-├── engine.py         # Motor de cascada (dependencias, fines de semana, feriados)
+├── app.py            # Endpoints Flask (proyectos, tareas, catálogos, publicar a Monday)
+├── db.py             # Conexión Postgres + esquema + migraciones automáticas
+├── engine.py         # Motor de cascada (dependencias, fines de semana, feriados, override)
 ├── pdf_export.py     # Generador de PDF con formato Zebra
-├── seed.json         # 52 tareas extraídas del Excel original
+├── seed.json         # Tareas base extraídas del Excel original
 ├── static/
-│   └── index.html    # Toda la interfaz
-├── Dockerfile        # Imagen para EasyPanel
+│   ├── index.html    # Toda la interfaz (HTML + CSS + JS)
+│   └── logo.png      # Logo Zebra
+├── Dockerfile        # Imagen para EasyPanel (gunicorn)
 ├── requirements.txt
-├── .env.example
+├── COMO_FUNCIONA.md  # Documentación en lenguaje natural
 └── README.md
 ```
 
 ---
 
-## Pendiente para envío real a Monday
+## Variables de entorno
 
-Para que la publicación cree ítems reales necesito (del API de Monday):
-1. El **board_id** del board "* CREACIÓN DE TAREAS *".
-2. Los **column_id** de: Estatus, Especialista, Departamento, SM, Cliente, Fecha límite.
+| Variable | Para qué |
+|---|---|
+| `DATABASE_URL` | Conexión a PostgreSQL (la inyecta EasyPanel). |
+| `MONDAY_API_TOKEN` | Token de Monday; sin él, publicar queda en modo simulación. |
+| `MONDAY_DELAY` | (Opcional) Segundos de pausa entre tareas al publicar. Default `0.4`. |
+| `PORT` | Lo inyecta EasyPanel automáticamente. |
 
-Esos se cargan en la pestaña **Monday** de la app. Mientras tanto, la mutación incluida
-verifica la conexión y el payload queda listo y traducido para mandarse.
-
-Las columnas "Especialista: Tiempo dedicado" y "SM: Tiempo dedicado" **no se usan**
-(se omiten del payload, como pediste).
