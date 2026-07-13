@@ -122,5 +122,25 @@ tasa, y reporta *"Creadas X/Y"* con los errores exactos de Monday si los hay.
 | `DATABASE_URL` | Conexión a PostgreSQL (la inyecta EasyPanel). |
 | `MONDAY_API_TOKEN` | Token de Monday; sin él, publicar queda en modo simulación. |
 | `MONDAY_DELAY` | (Opcional) Segundos de pausa entre tareas al publicar. Default `0.4`. |
+| `GOOGLE_CLIENT_ID` | ID de cliente OAuth de Google. **Si está presente, se exige login.** Sin él, la app entra sin autenticación. |
+| `ALLOWED_DOMAIN` | (Opcional) Dominio permitido para entrar. Default `zebradigital.marketing`. |
+| `SECRET_KEY` | (Recomendado) Clave para firmar la cookie de sesión. |
 | `PORT` | Lo inyecta EasyPanel automáticamente. |
+
+### Acceso con Google (login por dominio)
+
+La app puede exigir iniciar sesión **con Google** y solo permitir correos
+`@zebradigital.marketing` (configurable con `ALLOWED_DOMAIN`).
+
+1. En [Google Cloud Console](https://console.cloud.google.com/apis/credentials) crea
+   un **OAuth Client ID** de tipo *Web application*.
+2. En **Authorized JavaScript origins** agrega el dominio de tu app
+   (ej. `https://tudominio.com`).
+3. Copia el **Client ID** y ponlo en la variable `GOOGLE_CLIENT_ID` del servicio.
+   Agrega también un `SECRET_KEY` cualquiera (una cadena larga aleatoria).
+4. Redespliega. Al entrar aparecerá la pantalla de inicio de sesión.
+
+> Mientras `GOOGLE_CLIENT_ID` esté vacío, la app funciona **sin login** (útil para
+> pruebas). En cuanto lo defines, se activa la restricción por dominio. No necesitas
+> el *client secret*: la verificación del token se hace contra Google directamente.
 

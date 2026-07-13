@@ -6,7 +6,7 @@ import os
 import json
 import time
 import datetime
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, session
 import db as DB
 from db import connect, dict_cur, get_config, DEPTOS, CONFIG_KEYS
 from engine import recompute
@@ -16,6 +16,62 @@ SEED = os.path.join(BASE, "seed.json")
 app = Flask(__name__, static_folder="static")
 
 STATUSES = ["Pendiente", "En proceso", "Completado", "Bloqueado"]
+
+# --------------------------------------------------------------------------- autenticación (Google, dominio restringido)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+ALLOWED_DOMAIN = os.environ.get("ALLOWED_DOMAIN", "zebradigital.marketing").strip().lower()
+# clave para firmar la cookie de sesión; estable entre workers de gunicorn
+app.secret_key = os.environ.get("SECRET_KEY") or ("zebra-" + (GOOGLE_CLIENT_ID or "dev-secret"))
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=14))
+
+def _verify_google_token(token):
+    """Verifica el ID token de Google usando el endpoint tokeninfo (sin libs extra)."""
+    import urllib.request, urllib.parse
+    url = "https://oauth2.googleapis.com/tokeninfo?" + urllib.parse.urlencode({"id_token": token})
+    with urllib.request.urlopen(url, timeout=15) as r:
+        return json.loads(r.read().decode())
+
+@app.before_request
+def _require_login():
+    if not GOOGLE_CLIENT_ID:          # login desactivado hasta configurar el client_id
+        return
+    p = request.path
+    if p == "/" or p == "/health" or p.startswith("/static/") or p.startswith("/auth/"):
+        return
+    if not session.get("user"):
+        return jsonify({"error": "auth_required"}), 401
+
+@app.route("/auth/me")
+def auth_me():
+    return jsonify({"enabled": bool(GOOGLE_CLIENT_ID), "client_id": GOOGLE_CLIENT_ID,
+                    "domain": ALLOWED_DOMAIN, "user": session.get("user")})
+
+@app.route("/auth/google", methods=["POST"])
+def auth_google():
+    token = (request.json or {}).get("credential", "")
+    if not token:
+        return jsonify({"ok": False, "error": "Falta el token"}), 400
+    try:
+        info = _verify_google_token(token)
+    except Exception:
+        return jsonify({"ok": False, "error": "Token inválido"}), 401
+    email = (info.get("email") or "").lower()
+    domain = email.split("@")[-1] if "@" in email else ""
+    if info.get("aud") != GOOGLE_CLIENT_ID:
+        return jsonify({"ok": False, "error": "Cliente de Google no válido"}), 401
+    if str(info.get("email_verified")).lower() != "true":
+        return jsonify({"ok": False, "error": "El correo no está verificado"}), 401
+    if ALLOWED_DOMAIN and domain != ALLOWED_DOMAIN and (info.get("hd", "").lower() != ALLOWED_DOMAIN):
+        return jsonify({"ok": False, "error": f"Debes entrar con un correo @{ALLOWED_DOMAIN}"}), 403
+    session.permanent = True
+    session["user"] = {"email": email, "name": info.get("name", ""), "picture": info.get("picture", "")}
+    return jsonify({"ok": True, "user": session["user"]})
+
+@app.route("/auth/logout", methods=["POST"])
+def auth_logout():
+    session.clear()
+    return jsonify({"ok": True})
 
 # --------------------------------------------------------------------------- helpers
 def iso(d):

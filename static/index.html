@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Zebra · Automatizador de Cronograma</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --ink:#111315; --paper:#fff; --muted:#6b7177; --line:#e4e7ea;
@@ -105,6 +106,14 @@
   .rchip button:hover{background:rgba(255,255,255,.55)}
   td select.raddsel{width:auto;min-width:74px;border:1px dashed var(--line);border-radius:20px;font-size:11px;color:var(--muted);background:#fff;padding:3px 6px}
   td select.raddsel:hover{border-color:var(--gold);background:#fff}
+  /* ---- login ---- */
+  .login{min-height:70vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .login-card{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:40px 34px;max-width:400px;width:100%;text-align:center}
+  .login-card .stripe{width:44px;height:44px;margin:0 auto 14px}
+  .login-card h2{margin:0 0 6px;font-size:20px}
+  .login-card p{margin:0 0 22px;color:var(--muted);font-size:13px}
+  .login-card #gbtn{display:flex;justify-content:center;min-height:44px}
+  .login-card .issue{margin-top:16px;text-align:left}
 </style>
 </head>
 <body>
@@ -113,10 +122,14 @@
     <div class="logo"><img src="/static/logo.png" alt="Zebra" class="logoimg"></div>
     <span class="small" style="color:#9aa0a6;letter-spacing:1px">CRONOGRAMA</span>
     <div class="sp"></div>
-    <select id="projSel" onchange="openProj(this.value)"></select>
-    <button class="gold" onclick="openNewProj()">+ Nuevo proyecto</button>
-    <button onclick="setTab('manage');render()" id="btnManage" title="Proyectos y plantillas">📁 Proyectos</button>
-    <button onclick="setTab('monday');render()" id="btnMonday" title="Configuración Monday">⚙ Monday</button>
+    <div id="hdrActions" style="display:flex;gap:14px;align-items:center">
+      <select id="projSel" onchange="openProj(this.value)"></select>
+      <button class="gold" onclick="openNewProj()">+ Nuevo proyecto</button>
+      <button onclick="setTab('manage');render()" id="btnManage" title="Proyectos y plantillas">📁 Proyectos</button>
+      <button onclick="setTab('monday');render()" id="btnMonday" title="Configuración Monday">⚙ Monday</button>
+      <span id="userChip" class="small" style="color:#9aa0a6"></span>
+      <button id="btnLogout" style="display:none" onclick="logout()" title="Cerrar sesión">Salir</button>
+    </div>
   </div>
   <div class="goldline"></div>
 </header>
@@ -185,7 +198,11 @@ function confirmDialog(msg,okLabel){
   return new Promise(res=>{_confRes=res;});
 }
 function confResolve(v){const r=_confRes;_confRes=null;try{dlgConfirm.close();}catch(e){}if(r)r(v);}
-async function api(url,opt){const r=await fetch(url,Object.assign({headers:{"Content-Type":"application/json"}},opt));return r.json();}
+async function api(url,opt){
+  const r=await fetch(url,Object.assign({headers:{"Content-Type":"application/json"}},opt));
+  if(r.status===401 && url.startsWith("/api/")){location.reload();return {};}
+  return r.json();
+}
 function fmt(d){if(!d)return "—";const p=String(d).slice(0,10).split("-");return `${p[2]}/${p[1]}`;}
 function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
 function stClass(s){return "st-"+s.replace(/\s/g,"");}
@@ -636,7 +653,44 @@ function showLaunchResult(r){
     <p class="small">El proyecto quedó <b>Lanzado</b> y el payload (con IDs traducidos) se guardó en la base de datos.</p>`;
   $("#launchFoot").innerHTML='<button class="primary" onclick="dlgLaunch.close()">Listo</button>';
 }
-boot();
+
+// ---------- autenticación (Google) ----------
+async function init(){
+  let me={};
+  try{ me=await api("/auth/me"); }catch(e){ me={enabled:false}; }
+  if(me.enabled && !me.user){ showLogin(me); return; }
+  if(me.user){
+    $("#userChip").textContent=me.user.email||"";
+    $("#btnLogout").style.display="";
+  }
+  boot();
+}
+function showLogin(me){
+  $("#hdrActions").style.display="none";
+  $("#app").innerHTML=`<div class="login"><div class="login-card">
+    <span class="stripe"></span>
+    <h2>Acceso Zebra</h2>
+    <p>Inicia sesión con tu correo <b>@${esc(me.domain||"zebradigital.marketing")}</b></p>
+    <div id="gbtn"></div>
+    <div class="issue error" id="loginErr" style="display:none"></div>
+  </div></div>`;
+  const start=()=>{
+    try{
+      google.accounts.id.initialize({client_id:me.client_id, callback:onGoogleCredential});
+      google.accounts.id.renderButton($("#gbtn"),{theme:"outline",size:"large",text:"signin_with",shape:"pill",width:260});
+    }catch(e){ $("#gbtn").innerHTML='<p class="small">No se pudo cargar Google. Recarga la página.</p>'; }
+  };
+  if(window.google && google.accounts && google.accounts.id) start();
+  else { let n=0,iv=setInterval(()=>{ if(window.google&&google.accounts&&google.accounts.id){clearInterval(iv);start();} else if(++n>40){clearInterval(iv);} },200); }
+}
+async function onGoogleCredential(resp){
+  const r=await api("/auth/google",{method:"POST",body:JSON.stringify({credential:resp.credential})});
+  if(r.ok){ location.reload(); return; }
+  const e=$("#loginErr"); if(e){ e.style.display="block"; e.textContent=r.error||"No se pudo iniciar sesión"; }
+}
+async function logout(){ await api("/auth/logout",{method:"POST"}); location.reload(); }
+
+init();
 </script>
 </body>
 </html>
