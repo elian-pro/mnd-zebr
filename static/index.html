@@ -114,6 +114,15 @@
   .login-card p{margin:0 0 22px;color:var(--muted);font-size:13px}
   .login-card #gbtn{display:flex;justify-content:center;min-height:44px}
   .login-card .issue{margin-top:16px;text-align:left}
+  /* ---- arrastrar para reordenar ---- */
+  .drag{cursor:grab;color:var(--muted);font-size:15px;line-height:1;user-select:none;padding:2px 2px;border-radius:4px}
+  .drag:hover{background:var(--soft);color:var(--ink)}
+  .drag:active{cursor:grabbing}
+  .line-head .drag{color:#bbb}
+  .line-head .drag:hover{background:rgba(255,255,255,.12);color:#fff}
+  tr.dragover td{box-shadow:inset 0 2px 0 var(--gold)}
+  .card.dragover{outline:2px dashed var(--gold);outline-offset:2px}
+  .dragging{opacity:.45}
 </style>
 </head>
 <body>
@@ -298,10 +307,48 @@ async function setResp(tid,dep,add){
   await updTask(tid,'responsible',cur.join(", "));
 }
 
+// ---------- arrastrar y soltar (reordenar tareas y líneas)
+let DRAG_TASK=null, DRAG_LINE=null;
+function clearDnd(){document.querySelectorAll(".dragging,.dragover").forEach(x=>x.classList.remove("dragging","dragover"));}
+function taskDragStart(e,tid,lid){DRAG_TASK={tid,lid};e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text","t");const tr=e.target.closest("tr");if(tr)tr.classList.add("dragging");e.stopPropagation();}
+function taskDragOver(e,tid,lid){if(!DRAG_TASK||DRAG_TASK.lid!==lid)return;e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect="move";document.querySelectorAll("tr.dragover").forEach(x=>x.classList.remove("dragover"));if(tid!==DRAG_TASK.tid)e.currentTarget.classList.add("dragover");}
+function taskDragLeave(e){e.currentTarget.classList.remove("dragover");}
+function taskDragEnd(e){DRAG_TASK=null;clearDnd();}
+async function taskDrop(e,targetTid,lid){
+  e.preventDefault();e.stopPropagation();
+  const d=DRAG_TASK;DRAG_TASK=null;clearDnd();
+  if(!d||d.lid!==lid||d.tid===targetTid)return;
+  const line=STATE.lines.find(l=>l.id===lid);if(!line)return;
+  const ids=line.tasks.map(t=>t.id);
+  const from=ids.indexOf(d.tid);if(from<0)return;
+  const moved=ids.splice(from,1)[0];
+  let idx=ids.indexOf(targetTid);if(idx<0)idx=ids.length;
+  ids.splice(idx,0,moved);
+  await api(`/api/lines/${lid}/reorder`,{method:"PUT",body:JSON.stringify({order:ids})});
+  await loadProject(STATE.id);
+}
+function lineDragStart(e,lid){DRAG_LINE={lid};e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text","l");const c=e.target.closest(".card");if(c)c.classList.add("dragging");}
+function lineDragOver(e,lid){if(!DRAG_LINE)return;e.preventDefault();e.dataTransfer.dropEffect="move";document.querySelectorAll(".card.dragover").forEach(x=>x.classList.remove("dragover"));if(lid!==DRAG_LINE.lid)e.currentTarget.classList.add("dragover");}
+function lineDragLeave(e){if(e.currentTarget===e.target)e.currentTarget.classList.remove("dragover");}
+function lineDragEnd(e){DRAG_LINE=null;clearDnd();}
+async function lineDrop(e,targetLid){
+  e.preventDefault();
+  const d=DRAG_LINE;DRAG_LINE=null;clearDnd();
+  if(!d||d.lid===targetLid)return;
+  const ids=STATE.lines.map(l=>l.id);
+  const from=ids.indexOf(d.lid);if(from<0)return;
+  const moved=ids.splice(from,1)[0];
+  let idx=ids.indexOf(targetLid);if(idx<0)idx=ids.length;
+  ids.splice(idx,0,moved);
+  await api(`/api/projects/${STATE.id}/lines/reorder`,{method:"PUT",body:JSON.stringify({order:ids})});
+  await loadProject(STATE.id);
+}
+
 function renderCrono(){
   let h="";
   STATE.lines.forEach(line=>{
-    h+=`<div class="card"><div class="line-head">
+    h+=`<div class="card" data-lid="${line.id}" ondragover="lineDragOver(event,${line.id})" ondrop="lineDrop(event,${line.id})" ondragleave="lineDragLeave(event)"><div class="line-head">
+      <span class="drag" draggable="true" title="Arrastra para reordenar la línea" ondragstart="lineDragStart(event,${line.id})" ondragend="lineDragEnd(event)">⠿</span>
       <input value="${esc(line.name)}" onchange="renameLine(${line.id},this.value)">
       <span class="small" style="color:#ccc">${line.tasks.length} tareas</span><div style="flex:1"></div>
       <span class="small" style="color:#ccc">Monday:</span>
@@ -313,10 +360,15 @@ function renderCrono(){
     </tr></thead><tbody>`;
     line.tasks.forEach(t=>{
       const deps=allTasks().filter(x=>x.id!=t.id);
-      h+=`<tr>
+      h+=`<tr data-tid="${t.id}" ondragover="taskDragOver(event,${t.id},${line.id})" ondrop="taskDrop(event,${t.id},${line.id})" ondragleave="taskDragLeave(event)">
         <td class="tname">
-          <input value="${esc(t.name)}" onchange="updTask(${t.id},'name',this.value)">
-          <textarea rows="1" placeholder="+ descripción (opcional)" onchange="updTask(${t.id},'description',this.value)">${esc(t.description||"")}</textarea>
+          <div style="display:flex;align-items:flex-start;gap:6px">
+            <span class="drag" draggable="true" title="Arrastra para reordenar la tarea" ondragstart="taskDragStart(event,${t.id},${line.id})" ondragend="taskDragEnd(event)">⠿</span>
+            <div style="flex:1;min-width:0">
+              <input value="${esc(t.name)}" onchange="updTask(${t.id},'name',this.value)">
+              <textarea rows="1" placeholder="+ descripción (opcional)" onchange="updTask(${t.id},'description',this.value)">${esc(t.description||"")}</textarea>
+            </div>
+          </div>
         </td>
         <td><select class="status ${stClass(t.status)}" onchange="updTask(${t.id},'status',this.value)">
           ${STATUSES.map(s=>`<option ${t.status==s?'selected':''}>${s}</option>`).join("")}</select></td>

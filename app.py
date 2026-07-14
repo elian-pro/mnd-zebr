@@ -193,6 +193,17 @@ def add_line(pid):
     con.commit(); con.close()
     return jsonify({"ok": True})
 
+# reordenar líneas dentro de un proyecto (arrastrar y soltar)
+@app.route("/api/projects/<int:pid>/lines/reorder", methods=["PUT"])
+def reorder_lines(pid):
+    order = request.json.get("order", [])
+    con = connect()
+    with con.cursor() as cur:
+        for pos, lid in enumerate(order):
+            cur.execute("UPDATE lines SET position=%s WHERE id=%s AND project_id=%s", (pos, lid, pid))
+    con.commit(); con.close()
+    return jsonify({"ok": True})
+
 @app.route("/api/lines/<int:lid>", methods=["PUT"])
 def rename_line(lid):
     con = connect()
@@ -207,6 +218,21 @@ def del_line(lid):
     with con.cursor() as cur:
         cur.execute("DELETE FROM lines WHERE id=%s", (lid,))
     con.commit(); con.close()
+    return jsonify({"ok": True})
+
+# reordenar tareas dentro de una línea (arrastrar y soltar)
+@app.route("/api/lines/<int:lid>/reorder", methods=["PUT"])
+def reorder_tasks(lid):
+    order = request.json.get("order", [])
+    con = connect()
+    with con.cursor() as cur:
+        for pos, tid in enumerate(order):
+            cur.execute("UPDATE tasks SET position=%s WHERE id=%s AND line_id=%s", (pos, tid, lid))
+    pid = project_of_line(con, lid)
+    con.commit()
+    if pid:
+        recompute(con, pid)   # el orden afecta la cascada de tareas secuenciales
+    con.close()
     return jsonify({"ok": True})
 
 # marcar/desmarcar "crear en Monday" para todas las tareas de una línea
