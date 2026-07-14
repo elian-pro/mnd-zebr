@@ -193,6 +193,28 @@ def add_line(pid):
     con.commit(); con.close()
     return jsonify({"ok": True})
 
+# ordenar automáticamente las tareas de cada línea por fecha de inicio (más próxima primero)
+@app.route("/api/projects/<int:pid>/autosort", methods=["POST"])
+def autosort(pid):
+    con = connect()
+    with dict_cur(con) as cur:
+        cur.execute("SELECT id FROM lines WHERE project_id=%s", (pid,))
+        lids = [r["id"] for r in cur.fetchall()]
+        for lid in lids:
+            cur.execute("SELECT id, start_date, end_date, position FROM tasks WHERE line_id=%s", (lid,))
+            tasks = cur.fetchall()
+            def key(t):
+                sd, ed = t["start_date"], t["end_date"]
+                # sin fecha van al final; luego por inicio, luego por fin, luego orden actual
+                return (0 if sd else 1, sd or datetime.date.max, ed or datetime.date.max, t["position"])
+            tasks.sort(key=key)
+            for pos, t in enumerate(tasks):
+                cur.execute("UPDATE tasks SET position=%s WHERE id=%s", (pos, t["id"]))
+    con.commit()
+    recompute(con, pid)
+    con.close()
+    return jsonify({"ok": True})
+
 # reordenar líneas dentro de un proyecto (arrastrar y soltar)
 @app.route("/api/projects/<int:pid>/lines/reorder", methods=["PUT"])
 def reorder_lines(pid):

@@ -255,6 +255,7 @@ function render(){
     <span class="pill">Estado</span>
     <select onchange="updMeta('status',this.value)">${["En proceso","Lanzado","Pausado"].map(s=>`<option ${p.status==s?'selected':''}>${s}</option>`).join("")}</select>
     <div style="flex:1"></div>
+    <button onclick="autosort()" title="Ordenar las tareas de cada línea por fecha de inicio (más próxima primero)">⇅ Ordenar automáticamente</button>
     <button onclick="openTpl()">Guardar como plantilla</button>
     <a class="dl" href="/api/projects/${STATE.id}/pdf" target="_blank"><button>⬇ PDF</button></a>
     <button class="ghostdel" onclick="delProject()">Eliminar</button>
@@ -669,6 +670,7 @@ async function addTask(lid){await api(`/api/lines/${lid}/tasks`,{method:"POST",b
 async function renameLine(id,v){await api(`/api/lines/${id}`,{method:"PUT",body:JSON.stringify({name:v})});}
 async function delLine(id){if(!await confirmDialog("¿Quitar esta línea y sus tareas?"))return;await api(`/api/lines/${id}`,{method:"DELETE"});await loadProject(STATE.id);toast("Línea eliminada");}
 async function addLine(){await api(`/api/projects/${STATE.id}/lines`,{method:"POST",body:JSON.stringify({name:"Nueva línea de trabajo"})});await loadProject(STATE.id);}
+async function autosort(){await api(`/api/projects/${STATE.id}/autosort`,{method:"POST",body:JSON.stringify({})});await loadProject(STATE.id);setTab('crono');render();toast("Ordenado por fecha de inicio");}
 async function setLineMonday(lid,val){await api(`/api/lines/${lid}/monday`,{method:"PUT",body:JSON.stringify({value:val})});await loadProject(STATE.id);toast(val?"Todas marcadas para Monday":"Todas desmarcadas");}
 async function updResp(id,k,v){await api(`/api/responsibles/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});if(k==='depto'){await loadProject(STATE.id);setTab('resp');render();}}
 async function delProject(){if(!await confirmDialog("¿Eliminar todo el proyecto?"))return;await api(`/api/projects/${STATE.id}`,{method:"DELETE"});TAB="crono";await boot();}
