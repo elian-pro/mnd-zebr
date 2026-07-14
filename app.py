@@ -146,6 +146,9 @@ def get_project(pid):
         if not proj:
             con.close()
             return jsonify({"error": "not found"}), 404
+    # recalcula al abrir para que las fechas siempre reflejen el motor/estructura actual
+    recompute(con, pid)
+    with dict_cur(con) as cur:
         cur.execute("SELECT * FROM lines WHERE project_id=%s ORDER BY position", (pid,))
         lines = cur.fetchall()
         out_lines = []
