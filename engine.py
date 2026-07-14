@@ -60,11 +60,14 @@ def recompute(con, project_id):
                     start = t["start_override"]
                 else:
                     candidates = [pstart]
-                    if prev_end:
-                        candidates.append(prev_end)
                     dep = t["depends_on"]
                     if dep and dep in computed:
+                        # dependencia explícita: sigue SOLO a esa tarea (no a la fila de arriba),
+                        # así reordenar/mover no altera su fecha.
                         candidates.append(computed[dep][1])
+                    elif prev_end:
+                        # modo "Secuencial": sigue a la tarea anterior de la línea (por posición).
+                        candidates.append(prev_end)
                     start = max(candidates)
                 start = _next_working(start, holidays)
                 end = add_working_days(start, t["days"], holidays) if t["days"] > 0 else start
