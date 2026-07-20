@@ -685,8 +685,10 @@ async function launch(){
   if(r.blocked){
     let h=`<p class="issue error">No se publicó: hay errores que corregir.</p>`;
     h+=r.issues.map(i=>`<div class="issue ${i.level}">${esc(i.msg)}</div>`).join("");
+    if(r.hard) h+=`<p class="small" style="margin-top:8px">Ve a la pestaña <b>Responsables</b> y elige una persona por departamento.</p>`;
     $("#launchBody").innerHTML=h;
-    $("#launchFoot").innerHTML='<button onclick="dlgLaunch.close()">Cerrar</button><button class="primary" onclick="forceLaunch()">Publicar de todos modos</button>';
+    $("#launchFoot").innerHTML='<button onclick="dlgLaunch.close()">Cerrar</button>'
+      + (r.hard?'':'<button class="primary" onclick="forceLaunch()">Publicar de todos modos</button>');
     return;
   }
   showLaunchResult(r);

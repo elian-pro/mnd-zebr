@@ -748,6 +748,13 @@ def push_to_monday(token, payload):
 @app.route("/api/projects/<int:pid>/launch", methods=["POST"])
 def launch(pid):
     con = connect()
+    # bloqueo duro: sin responsables asignados no se puede lanzar (ni con "publicar de todos modos")
+    with dict_cur(con) as cur:
+        cur.execute("SELECT COUNT(*) c FROM responsibles WHERE project_id=%s AND COALESCE(person,'')<>''", (pid,))
+        if cur.fetchone()["c"] == 0:
+            con.close()
+            return jsonify({"ok": False, "blocked": True, "hard": True,
+                            "issues": [{"level": "error", "msg": "Asigna responsables primero"}]})
     issues = validate_project(con, pid)
     if any(i["level"] == "error" for i in issues) and not request.json.get("force"):
         con.close()
