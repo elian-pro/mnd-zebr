@@ -50,6 +50,13 @@
   td.tname textarea{font-size:11.5px;color:var(--muted);resize:vertical;min-height:24px;margin-top:3px;line-height:1.3}
   .col-days input{width:60px;text-align:center}
   .dates{color:var(--muted);font-size:12px;white-space:nowrap;padding-top:12px}
+  .dcell{display:flex;align-items:center;gap:4px}
+  .dtxt.fixed{font-weight:700;color:var(--ink)}
+  .dwarn{color:var(--warn);cursor:help}
+  button.pen{border:none;background:none;padding:0 3px;font-size:12px;line-height:1;opacity:.35;transition:opacity .15s}
+  tr:hover button.pen{opacity:1}
+  button.pen:hover{background:none;opacity:1}
+  .dates input.dedit{width:120px;border:1px solid var(--line);background:#fff;font-size:12px;padding:4px 6px}
   select.status{border-radius:20px;font-weight:700;font-size:11px;color:#fff;border:none;padding:5px 8px;-webkit-appearance:none;appearance:none;text-align:center;text-align-last:center}
   .st-Pendiente{background:var(--pend)} .st-Enproceso{background:var(--proc)} .st-Completado{background:var(--ok)} .st-Bloqueado{background:var(--block)}
   .add-row td{padding:8px 10px;background:var(--soft)}
@@ -290,15 +297,42 @@ function respCell(t){
     <option value="">+ depto</option>${avail.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("")}</select>`:"";
   return `<div class="rcell">${chips||'<span class="small" style="color:var(--muted)">—</span>'}${add}</div>`;
 }
-// celda "Inicio": editable solo si la tarea es secuencial (sin dependencia explícita)
+// celda "Inicio": fecha compacta + ✏️ para fijarla a mano en cualquier tarea.
+// Muestra siempre start_date (lo que calculó el motor), que puede diferir del
+// override si éste cayó en fin de semana o feriado.
 function startCell(t){
-  if(t.depends_on) return `<td class="dates" title="Sigue a la tarea de la que depende">${fmt(t.start_date)}</td>`;
   const ov=t.start_override?String(t.start_override).slice(0,10):"";
-  const val=ov||String(t.start_date||"").slice(0,10);
-  const reset=ov?`<button class="ghostdel" style="padding:1px 5px;margin-left:3px" title="Volver a automático" onclick="updTask(${t.id},'start_override',null)">↺</button>`:"";
-  return `<td class="dates"><input type="date" value="${val}" style="width:120px;font-weight:${ov?'700':'400'}"
-    title="${ov?'Inicio fijado manualmente':'Inicio automático (secuencial). Cámbialo para fijarlo.'}"
-    onchange="updTask(${t.id},'start_override',this.value||null)">${reset}</td>`;
+  const shown=String(t.start_date||"").slice(0,10);
+  const dep=t.depends_on?findTask(t.depends_on):null;
+  const broken=ov&&dep&&dep.end_date&&shown&&shown<String(dep.end_date).slice(0,10);
+  let tip;
+  if(ov) tip="Inicio fijado manualmente"+(shown&&shown!==ov?` (${fmt(ov)} cayó en día inhábil)`:"");
+  else tip=dep?"Inicio automático: sigue a la tarea de la que depende":"Inicio automático (secuencial)";
+  const warn=broken?`<span class="dwarn" title="Empieza antes de que termine «${esc(dep.name)}»">⚠</span>`:"";
+  const reset=ov?`<button class="ghostdel" style="padding:1px 5px" title="Volver a automático" onclick="updTask(${t.id},'start_override',null)">↺</button>`:"";
+  return `<td class="dates" id="sc${t.id}"><span class="dcell">
+    <span class="dtxt${ov?' fixed':''}" title="${esc(tip)}">${fmt(t.start_date)}</span>${warn}
+    <button class="pen" title="Editar fecha de inicio" onclick="editStart(${t.id})">✏️</button>${reset}
+  </span></td>`;
+}
+// edición en línea: el ✏️ cambia la celda por un selector de fecha
+let SEDIT=null;
+function editStart(tid){
+  const td=$("#sc"+tid), t=findTask(tid); if(!td||!t) return;
+  SEDIT={tid,saved:false};
+  td.innerHTML=`<input type="date" class="dedit" value="${String(t.start_override||t.start_date||"").slice(0,10)}"
+    onchange="saveStart(${tid},this.value)" onblur="cancelStart(${tid})"
+    onkeyup="if(event.key==='Escape')this.blur()">`;
+  const i=td.querySelector("input"); i.focus();
+  try{ if(i.showPicker) i.showPicker(); }catch(e){}
+}
+async function saveStart(tid,v){ if(SEDIT&&SEDIT.tid===tid)SEDIT.saved=true; await updTask(tid,'start_override',v||null); }
+function cancelStart(tid){
+  // Chrome dispara blur al abrir el calendario: sólo repintamos si de verdad se salió sin guardar
+  setTimeout(()=>{
+    const i=document.querySelector("#sc"+tid+" input");
+    if(SEDIT&&SEDIT.tid===tid&&!SEDIT.saved&&document.activeElement!==i){SEDIT=null;render();}
+  },250);
 }
 async function setResp(tid,dep,add){
   const t=findTask(tid); if(!t) return;
@@ -670,7 +704,11 @@ async function addTask(lid){await api(`/api/lines/${lid}/tasks`,{method:"POST",b
 async function renameLine(id,v){await api(`/api/lines/${id}`,{method:"PUT",body:JSON.stringify({name:v})});}
 async function delLine(id){if(!await confirmDialog("¿Quitar esta línea y sus tareas?"))return;await api(`/api/lines/${id}`,{method:"DELETE"});await loadProject(STATE.id);toast("Línea eliminada");}
 async function addLine(){await api(`/api/projects/${STATE.id}/lines`,{method:"POST",body:JSON.stringify({name:"Nueva línea de trabajo"})});await loadProject(STATE.id);}
-async function autosort(){await api(`/api/projects/${STATE.id}/autosort`,{method:"POST",body:JSON.stringify({})});await loadProject(STATE.id);setTab('crono');render();toast("Ordenado por fecha de inicio");}
+async function autosort(){
+  const fixed=STATE.lines.reduce((n,l)=>n+l.tasks.filter(t=>t.start_override).length,0);
+  if(fixed&&!await confirmDialog(`${fixed} tarea(s) tienen fecha de inicio fija: no se moverán y el orden puede quedar irregular. ¿Ordenar de todos modos?`,"Ordenar"))return;
+  await api(`/api/projects/${STATE.id}/autosort`,{method:"POST",body:JSON.stringify({})});await loadProject(STATE.id);setTab('crono');render();toast("Ordenado por fecha de inicio");
+}
 async function setLineMonday(lid,val){await api(`/api/lines/${lid}/monday`,{method:"PUT",body:JSON.stringify({value:val})});await loadProject(STATE.id);toast(val?"Todas marcadas para Monday":"Todas desmarcadas");}
 async function updResp(id,k,v){await api(`/api/responsibles/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});if(k==='depto'){await loadProject(STATE.id);setTab('resp');render();}}
 async function delProject(){if(!await confirmDialog("¿Eliminar todo el proyecto?"))return;await api(`/api/projects/${STATE.id}`,{method:"DELETE"});TAB="crono";await boot();}
