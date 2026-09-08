@@ -103,17 +103,21 @@ CREATE TABLE IF NOT EXISTS config(
 );
 """
 
-DEPTOS = ["Success M", "Media", "CRM", "iA", "Creativo", "Admin", "Cliente"]
+# los nuevos van al final: monday_index se siembra con la posición en esta lista
+DEPTOS = ["Success M", "Media", "CRM", "iA", "Creativo", "Admin", "Cliente",
+          "Estrategia", "Operaciones"]
 
 # color por defecto de cada departamento (se usa en la vista Gantt). Editable en la pestaña Monday.
 DEPTO_COLORS = {
-    "Success M": "#2563eb",
-    "Media":     "#c9a227",
-    "CRM":       "#1f9d55",
-    "iA":        "#7c3aed",
-    "Creativo":  "#e8590c",
-    "Admin":     "#0891b2",
-    "Cliente":   "#db2777",
+    "Success M":   "#2563eb",
+    "Media":       "#c9a227",
+    "CRM":         "#1f9d55",
+    "iA":          "#7c3aed",
+    "Creativo":    "#e8590c",
+    "Admin":       "#0891b2",
+    "Cliente":     "#db2777",
+    "Estrategia":  "#475569",
+    "Operaciones": "#4d7c0f",
 }
 
 # claves de configuración esperadas (column_ids del board de Monday)
@@ -149,6 +153,15 @@ def init_db():
                     """INSERT INTO monday_departments(name,monday_label,monday_index,color)
                        VALUES(%s,%s,%s,%s) ON CONFLICT (name) DO NOTHING""",
                     (dep, dep, i, DEPTO_COLORS.get(dep, "#6b7177")))
+            # los proyectos ya creados no tienen fila para los departamentos agregados
+            # después; sin esto no se les puede asignar responsable
+            cur.execute(
+                """INSERT INTO responsibles(project_id,depto)
+                   SELECT p.id, d.name
+                     FROM projects p CROSS JOIN unnest(%s::text[]) AS d(name)
+                    WHERE NOT EXISTS (SELECT 1 FROM responsibles r
+                                       WHERE r.project_id=p.id AND r.depto=d.name)""",
+                (DEPTOS,))
         con.commit()
     finally:
         con.close()
