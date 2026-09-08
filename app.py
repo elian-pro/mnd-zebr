@@ -4,8 +4,9 @@ Backend Flask + PostgreSQL. Listo para Git + EasyPanel (gunicorn).
 """
 import os
 import json
+import time
 import datetime
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, session
 import db as DB
 from db import connect, dict_cur, get_config, DEPTOS, CONFIG_KEYS
 from engine import recompute
@@ -15,6 +16,62 @@ SEED = os.path.join(BASE, "seed.json")
 app = Flask(__name__, static_folder="static")
 
 STATUSES = ["Pendiente", "En proceso", "Completado", "Bloqueado"]
+
+# --------------------------------------------------------------------------- autenticación (Google, dominio restringido)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+ALLOWED_DOMAIN = os.environ.get("ALLOWED_DOMAIN", "zebradigital.marketing").strip().lower()
+# clave para firmar la cookie de sesión; estable entre workers de gunicorn
+app.secret_key = os.environ.get("SECRET_KEY") or ("zebra-" + (GOOGLE_CLIENT_ID or "dev-secret"))
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=14))
+
+def _verify_google_token(token):
+    """Verifica el ID token de Google usando el endpoint tokeninfo (sin libs extra)."""
+    import urllib.request, urllib.parse
+    url = "https://oauth2.googleapis.com/tokeninfo?" + urllib.parse.urlencode({"id_token": token})
+    with urllib.request.urlopen(url, timeout=15) as r:
+        return json.loads(r.read().decode())
+
+@app.before_request
+def _require_login():
+    if not GOOGLE_CLIENT_ID:          # login desactivado hasta configurar el client_id
+        return
+    p = request.path
+    if p == "/" or p == "/health" or p.startswith("/static/") or p.startswith("/auth/"):
+        return
+    if not session.get("user"):
+        return jsonify({"error": "auth_required"}), 401
+
+@app.route("/auth/me")
+def auth_me():
+    return jsonify({"enabled": bool(GOOGLE_CLIENT_ID), "client_id": GOOGLE_CLIENT_ID,
+                    "domain": ALLOWED_DOMAIN, "user": session.get("user")})
+
+@app.route("/auth/google", methods=["POST"])
+def auth_google():
+    token = (request.json or {}).get("credential", "")
+    if not token:
+        return jsonify({"ok": False, "error": "Falta el token"}), 400
+    try:
+        info = _verify_google_token(token)
+    except Exception:
+        return jsonify({"ok": False, "error": "Token inválido"}), 401
+    email = (info.get("email") or "").lower()
+    domain = email.split("@")[-1] if "@" in email else ""
+    if info.get("aud") != GOOGLE_CLIENT_ID:
+        return jsonify({"ok": False, "error": "Cliente de Google no válido"}), 401
+    if str(info.get("email_verified")).lower() != "true":
+        return jsonify({"ok": False, "error": "El correo no está verificado"}), 401
+    if ALLOWED_DOMAIN and domain != ALLOWED_DOMAIN and (info.get("hd", "").lower() != ALLOWED_DOMAIN):
+        return jsonify({"ok": False, "error": f"Debes entrar con un correo @{ALLOWED_DOMAIN}"}), 403
+    session.permanent = True
+    session["user"] = {"email": email, "name": info.get("name", ""), "picture": info.get("picture", "")}
+    return jsonify({"ok": True, "user": session["user"]})
+
+@app.route("/auth/logout", methods=["POST"])
+def auth_logout():
+    session.clear()
+    return jsonify({"ok": True})
 
 # --------------------------------------------------------------------------- helpers
 def iso(d):
@@ -89,6 +146,9 @@ def get_project(pid):
         if not proj:
             con.close()
             return jsonify({"error": "not found"}), 404
+    # recalcula al abrir para que las fechas siempre reflejen el motor/estructura actual
+    recompute(con, pid)
+    with dict_cur(con) as cur:
         cur.execute("SELECT * FROM lines WHERE project_id=%s ORDER BY position", (pid,))
         lines = cur.fetchall()
         out_lines = []
@@ -136,6 +196,39 @@ def add_line(pid):
     con.commit(); con.close()
     return jsonify({"ok": True})
 
+# ordenar automáticamente las tareas de cada línea por fecha de inicio (más próxima primero)
+@app.route("/api/projects/<int:pid>/autosort", methods=["POST"])
+def autosort(pid):
+    con = connect()
+    with dict_cur(con) as cur:
+        cur.execute("SELECT id FROM lines WHERE project_id=%s", (pid,))
+        lids = [r["id"] for r in cur.fetchall()]
+        for lid in lids:
+            cur.execute("SELECT id, start_date, end_date, position FROM tasks WHERE line_id=%s", (lid,))
+            tasks = cur.fetchall()
+            def key(t):
+                sd, ed = t["start_date"], t["end_date"]
+                # sin fecha van al final; luego por inicio, luego por fin, luego orden actual
+                return (0 if sd else 1, sd or datetime.date.max, ed or datetime.date.max, t["position"])
+            tasks.sort(key=key)
+            for pos, t in enumerate(tasks):
+                cur.execute("UPDATE tasks SET position=%s WHERE id=%s", (pos, t["id"]))
+    con.commit()
+    recompute(con, pid)
+    con.close()
+    return jsonify({"ok": True})
+
+# reordenar líneas dentro de un proyecto (arrastrar y soltar)
+@app.route("/api/projects/<int:pid>/lines/reorder", methods=["PUT"])
+def reorder_lines(pid):
+    order = request.json.get("order", [])
+    con = connect()
+    with con.cursor() as cur:
+        for pos, lid in enumerate(order):
+            cur.execute("UPDATE lines SET position=%s WHERE id=%s AND project_id=%s", (pos, lid, pid))
+    con.commit(); con.close()
+    return jsonify({"ok": True})
+
 @app.route("/api/lines/<int:lid>", methods=["PUT"])
 def rename_line(lid):
     con = connect()
@@ -152,6 +245,31 @@ def del_line(lid):
     con.commit(); con.close()
     return jsonify({"ok": True})
 
+# reordenar tareas dentro de una línea (arrastrar y soltar)
+@app.route("/api/lines/<int:lid>/reorder", methods=["PUT"])
+def reorder_tasks(lid):
+    order = request.json.get("order", [])
+    con = connect()
+    with con.cursor() as cur:
+        for pos, tid in enumerate(order):
+            cur.execute("UPDATE tasks SET position=%s WHERE id=%s AND line_id=%s", (pos, tid, lid))
+    pid = project_of_line(con, lid)
+    con.commit()
+    if pid:
+        recompute(con, pid)   # el orden afecta la cascada de tareas secuenciales
+    con.close()
+    return jsonify({"ok": True})
+
+# marcar/desmarcar "crear en Monday" para todas las tareas de una línea
+@app.route("/api/lines/<int:lid>/monday", methods=["PUT"])
+def set_line_monday(lid):
+    v = bool(request.json.get("value", True))
+    con = connect()
+    with con.cursor() as cur:
+        cur.execute("UPDATE tasks SET to_monday=%s WHERE line_id=%s", (v, lid))
+    con.commit(); con.close()
+    return jsonify({"ok": True})
+
 # --------------------------------------------------------------------------- tareas
 def project_of_line(con, lid):
     with dict_cur(con) as cur:
@@ -161,7 +279,8 @@ def project_of_line(con, lid):
 def project_of_task(con, tid):
     with dict_cur(con) as cur:
         cur.execute("SELECT l.project_id pid FROM tasks t JOIN lines l ON t.line_id=l.id WHERE t.id=%s", (tid,))
-        return cur.fetchone()["pid"]
+        row = cur.fetchone()
+        return row["pid"] if row else None
 
 @app.route("/api/lines/<int:lid>/tasks", methods=["POST"])
 def add_task(lid):
@@ -182,9 +301,12 @@ def update_task(tid):
     d = request.json
     con = connect()
     with con.cursor() as cur:
-        for k in ("name", "description", "days", "status", "responsible", "depends_on"):
+        for k in ("name", "description", "days", "status", "responsible", "depends_on", "start_override", "to_monday"):
             if k in d:
-                cur.execute(f"UPDATE tasks SET {k}=%s WHERE id=%s", (d[k], tid))
+                v = d[k]
+                if k == "start_override" and not v:   # "" o null -> volver a automático
+                    v = None
+                cur.execute(f"UPDATE tasks SET {k}=%s WHERE id=%s", (v, tid))
     pid = project_of_task(con, tid)
     con.commit()
     recompute(con, pid)
@@ -198,7 +320,8 @@ def del_task(tid):
     with con.cursor() as cur:
         cur.execute("DELETE FROM tasks WHERE id=%s", (tid,))
     con.commit()
-    recompute(con, pid)
+    if pid:
+        recompute(con, pid)
     con.close()
     return jsonify({"ok": True})
 
@@ -250,9 +373,10 @@ def monday_people():
     if request.method == "POST":
         d = request.json
         with con.cursor() as cur:
-            cur.execute("""INSERT INTO monday_people(name,monday_user_id) VALUES(%s,%s)
-                           ON CONFLICT (name) DO UPDATE SET monday_user_id=EXCLUDED.monday_user_id""",
-                        (d["name"], d.get("monday_user_id", "")))
+            cur.execute("""INSERT INTO monday_people(name,monday_user_id,department) VALUES(%s,%s,%s)
+                           ON CONFLICT (name) DO UPDATE SET monday_user_id=EXCLUDED.monday_user_id,
+                                                            department=EXCLUDED.department""",
+                        (d["name"], d.get("monday_user_id", ""), d.get("department", "")))
         con.commit(); con.close()
         return jsonify({"ok": True})
     with dict_cur(con) as cur:
@@ -269,7 +393,7 @@ def monday_person(pid):
             cur.execute("DELETE FROM monday_people WHERE id=%s", (pid,))
         else:
             d = request.json
-            for k in ("name", "monday_user_id"):
+            for k in ("name", "monday_user_id", "department"):
                 if k in d:
                     cur.execute(f"UPDATE monday_people SET {k}=%s WHERE id=%s", (d[k], pid))
     con.commit(); con.close()
@@ -281,9 +405,11 @@ def monday_departments():
     if request.method == "POST":
         d = request.json
         with con.cursor() as cur:
-            cur.execute("""INSERT INTO monday_departments(name,monday_label,monday_index) VALUES(%s,%s,%s)
-                           ON CONFLICT (name) DO UPDATE SET monday_label=EXCLUDED.monday_label, monday_index=EXCLUDED.monday_index""",
-                        (d["name"], d.get("monday_label", ""), d.get("monday_index")))
+            cur.execute("""INSERT INTO monday_departments(name,monday_label,monday_index,color) VALUES(%s,%s,%s,%s)
+                           ON CONFLICT (name) DO UPDATE SET monday_label=EXCLUDED.monday_label,
+                                                            monday_index=EXCLUDED.monday_index,
+                                                            color=EXCLUDED.color""",
+                        (d["name"], d.get("monday_label", ""), d.get("monday_index"), d.get("color", "")))
         con.commit(); con.close()
         return jsonify({"ok": True})
     with dict_cur(con) as cur:
@@ -300,11 +426,38 @@ def monday_department(did):
             cur.execute("DELETE FROM monday_departments WHERE id=%s", (did,))
         else:
             d = request.json
-            for k in ("name", "monday_label", "monday_index"):
+            for k in ("name", "monday_label", "monday_index", "color"):
                 if k in d:
                     cur.execute(f"UPDATE monday_departments SET {k}=%s WHERE id=%s", (d[k], did))
     con.commit(); con.close()
     return jsonify({"ok": True})
+
+# --------------------------------------------------------------------------- clientes (opciones del dropdown en Monday)
+@app.route("/api/monday/clients", methods=["GET"])
+def monday_clients():
+    con = connect()
+    cfg = get_config(con)
+    con.close()
+    token = os.environ.get("MONDAY_API_TOKEN", "").strip()
+    board, col = cfg.get("monday_board_id", ""), cfg.get("col_client", "")
+    if not (token and board and col):
+        return jsonify({"clients": [], "configured": False})
+    try:
+        res = _monday_gql(token,
+            "query($b:[ID!]){boards(ids:$b){columns{id type settings_str}}}", {"b": [str(board)]})
+        boards = (res.get("data") or {}).get("boards") or []
+        cols = (boards[0].get("columns") if boards else []) or []
+        target = next((c for c in cols if c.get("id") == col), None)
+        names = []
+        if target and target.get("settings_str"):
+            labels = json.loads(target["settings_str"]).get("labels")
+            if isinstance(labels, dict):        # status: {"0":"Nombre"}
+                names = [v for v in labels.values() if v]
+            elif isinstance(labels, list):      # dropdown: [{"id":1,"name":"Nombre"}]
+                names = [l.get("name") for l in labels if l.get("name")]
+        return jsonify({"clients": sorted(names), "configured": True})
+    except Exception as e:
+        return jsonify({"clients": [], "configured": True, "error": str(e)})
 
 # --------------------------------------------------------------------------- config (board_id, column_ids)
 @app.route("/api/config", methods=["GET", "PUT"])
@@ -425,46 +578,183 @@ def build_payload(con, pid):
     proj = data["project"]
     cfg = get_config(con)
     with dict_cur(con) as cur:
-        cur.execute("SELECT name, monday_user_id FROM monday_people")
-        people_map = {r["name"]: r["monday_user_id"] for r in cur.fetchall()}
-        cur.execute("SELECT name, monday_label, monday_index FROM monday_departments")
-        dept_map = {r["name"]: {"label": r["monday_label"], "index": r["monday_index"]} for r in cur.fetchall()}
+        cur.execute("SELECT name, monday_user_id, department FROM monday_people")
+        people_rows = cur.fetchall()
+        cur.execute("SELECT name, monday_label, monday_index, color FROM monday_departments")
+        dept_map = {r["name"]: {"label": r["monday_label"], "index": r["monday_index"],
+                                "color": r["color"]} for r in cur.fetchall()}
+        # responsable elegido por departamento EN ESTE PROYECTO (pestaña Responsables)
+        cur.execute("SELECT depto, person FROM responsibles WHERE project_id=%s", (pid,))
+        proj_resp = {r["depto"]: (r["person"] or "").strip() for r in cur.fetchall()}
 
-    def person_id(name):
-        # responsible puede traer varias personas separadas por coma; tomamos la primera mapeada
-        for part in (name or "").split(","):
-            part = part.strip()
-            if people_map.get(part):
-                return people_map[part]
-        return None
+    people_map = {r["name"]: r["monday_user_id"] for r in people_rows}
+    # depto -> lista de user_ids de las personas (con id) que pertenecen a ese departamento
+    people_by_dept = {}
+    for r in people_rows:
+        if r["department"] and r["monday_user_id"]:
+            people_by_dept.setdefault(r["department"], []).append(r["monday_user_id"])
 
+    def person_ids(responsible):
+        # 'responsible' lista los departamentos (separados por coma) de la tarea.
+        # Para cada depto se usa la persona asignada en la pestaña Responsables del proyecto,
+        # traducida a su user_id de Monday. Si no hay asignada, cae al catálogo del depto.
+        ids = []
+        def add(uid):
+            if uid and uid not in ids:
+                ids.append(uid)
+        for part in (responsible or "").split(","):
+            dep = part.strip()
+            if not dep:
+                continue
+            assigned = proj_resp.get(dep, "")            # persona elegida para ese depto
+            if assigned and people_map.get(assigned):    # 1) asignada en el proyecto + con user_id
+                add(people_map[assigned])
+                continue
+            for uid in people_by_dept.get(dep, []):       # 2) fallback: catálogo del depto
+                add(uid)
+            add(people_map.get(dep))                      # 3) por si 'dep' nombra a la persona directo
+        return ids
+
+    client = proj["client"]
+    try:
+        status_map = json.loads(cfg.get("status_map") or "{}")
+    except Exception:
+        status_map = {}
     payload = {
         "board_id": cfg.get("monday_board_id", ""),
-        "columns": {k: cfg.get(k, "") for k in CONFIG_KEYS if k.startswith("col_")},
-        "board_name": f"Lanzamiento · {proj['client']}",
+        "board_name": f"Lanzamiento · {client}",
+        "client": client,
+        "status_map": status_map,  # estatus de la app -> label o índice del board
+        "columns": {  # rol lógico -> id de columna en Monday
+            "status": cfg.get("col_status", ""),
+            "person": cfg.get("col_person_esp", ""),
+            "department": cfg.get("col_department", ""),
+            "client": cfg.get("col_client", ""),
+            "deadline": cfg.get("col_deadline", ""),
+        },
         "groups": [],
     }
+    # un solo grupo por proyecto, con el nombre del cliente; todas las tareas adentro
+    group = {"title": client, "items": []}
     for ln in data["lines"]:
-        g = {"title": ln["name"], "items": []}
         for t in ln["tasks"]:
+            if not t.get("to_monday", True):   # tareas desmarcadas no se crean en Monday
+                continue
             dep_info = dept_map.get((t.get("responsible") or "").split(",")[0].strip(), {})
-            g["items"].append({
-                "name": t["name"],
+            group["items"].append({
+                "name": f"Lanzamiento | {client} | {t['name']}",
+                "task": t["name"],
                 "description": t.get("description", ""),
-                "column_values": {
-                    cfg.get("col_status", "status"): t["status"],
-                    cfg.get("col_person_esp", "person"): person_id(t["responsible"]),
-                    cfg.get("col_department", "department"): dep_info.get("label"),
-                    cfg.get("col_deadline", "date"): t["end_date"],
-                    cfg.get("col_client", "client"): proj["client"],
-                },
+                "status": t["status"],
+                "person_ids": person_ids(t["responsible"]),
+                "department": dep_info.get("label") or "",
+                "department_index": dep_info.get("index"),
+                "deadline": t["end_date"],
             })
-        payload["groups"].append(g)
+    payload["groups"].append(group)
     return payload
+
+# --------------------------------------------------------------------------- API Monday (mutations reales)
+# Pausa entre llamadas para respetar los límites de tasa de Monday (se envían de uno en uno).
+MONDAY_DELAY = float(os.environ.get("MONDAY_DELAY", "0.4"))
+
+def _monday_gql(token, query, variables, tries=4):
+    """POST GraphQL a Monday con reintento ante límite de tasa (HTTP 429 o 'complexity budget')."""
+    import urllib.request, urllib.error
+    body = json.dumps({"query": query, "variables": variables}).encode()
+    res = {}
+    for attempt in range(tries):
+        req = urllib.request.Request(
+            "https://api.monday.com/v2", data=body,
+            headers={"Authorization": token, "Content-Type": "application/json", "API-Version": "2024-01"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                res = json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < tries - 1:
+                wait = 0
+                try:
+                    wait = int(e.headers.get("Retry-After", "0"))
+                except (TypeError, ValueError):
+                    wait = 0
+                time.sleep(min(max(wait, 5 * (attempt + 1)), 60))
+                continue
+            raise
+        # el límite por minuto a veces llega como HTTP 200 con 'errors'
+        if "limit" in json.dumps(res.get("errors") or "").lower() and attempt < tries - 1:
+            time.sleep(min(10 * (attempt + 1), 60))
+            continue
+        return res
+    return res
+
+def push_to_monday(token, payload):
+    """Crea un grupo por línea y un ítem por tarea en el board configurado, de uno en uno.
+    Devuelve (creadas, [errores])."""
+    board = str(payload["board_id"])
+    cols = payload["columns"]
+    status_map = payload.get("status_map", {})
+    created, errors = 0, []
+
+    def label_or_index(v):
+        # número -> {"index": n} ; texto -> {"label": "..."}
+        s = str(v).strip()
+        return {"index": int(s)} if s.lstrip("-").isdigit() else {"label": s}
+    Q_GROUP = "mutation($b:ID!,$n:String!){create_group(board_id:$b,group_name:$n){id}}"
+    Q_ITEM = ("mutation($b:ID!,$g:String,$n:String!,$c:JSON){"
+              "create_item(board_id:$b,group_id:$g,item_name:$n,column_values:$c,create_labels_if_missing:true){id}}")
+    for g in payload["groups"]:
+        gid = None
+        try:
+            res = _monday_gql(token, Q_GROUP, {"b": board, "n": g["title"][:255]})
+            gid = ((res.get("data") or {}).get("create_group") or {}).get("id")
+            if not gid:
+                errors.append(f"grupo «{g['title']}»: {res.get('errors') or res.get('error_message') or res}")
+        except Exception as e:
+            errors.append(f"grupo «{g['title']}»: {e}")
+        time.sleep(MONDAY_DELAY)
+        for it in g["items"]:
+            cv = {}
+            # Estatus: solo si está mapeado al board (label o índice). Sin mapeo -> se omite.
+            mapped = status_map.get(it.get("status"), "")
+            if cols.get("status") and str(mapped).strip() != "":
+                cv[cols["status"]] = label_or_index(mapped)
+            # Departamento: label si existe, si no, índice del catálogo.
+            if cols.get("department"):
+                if it.get("department"):
+                    cv[cols["department"]] = {"label": it["department"]}
+                elif it.get("department_index") is not None:
+                    cv[cols["department"]] = {"index": it["department_index"]}
+            if cols.get("deadline") and it.get("deadline"):
+                cv[cols["deadline"]] = {"date": str(it["deadline"])[:10]}
+            if cols.get("client") and payload.get("client"):
+                # la columna Cliente del board es un dropdown -> {"labels":[...]}
+                # (create_labels_if_missing crea la opción si el cliente aún no existe)
+                cv[cols["client"]] = {"labels": [payload["client"]]}
+            ids = [int(x) for x in (it.get("person_ids") or []) if str(x).isdigit()]
+            if cols.get("person") and ids:
+                cv[cols["person"]] = {"personsAndTeams": [{"id": i, "kind": "person"} for i in ids]}
+            try:
+                res = _monday_gql(token, Q_ITEM,
+                                  {"b": board, "g": gid, "n": it["name"][:255], "c": json.dumps(cv)})
+                if ((res.get("data") or {}).get("create_item") or {}).get("id"):
+                    created += 1
+                else:
+                    errors.append(f"ítem «{it['task']}»: {res.get('errors') or res.get('error_message') or res}")
+            except Exception as e:
+                errors.append(f"ítem «{it['task']}»: {e}")
+            time.sleep(MONDAY_DELAY)  # de uno en uno, respetando límites de Monday
+    return created, errors
 
 @app.route("/api/projects/<int:pid>/launch", methods=["POST"])
 def launch(pid):
     con = connect()
+    # bloqueo duro: sin responsables asignados no se puede lanzar (ni con "publicar de todos modos")
+    with dict_cur(con) as cur:
+        cur.execute("SELECT COUNT(*) c FROM responsibles WHERE project_id=%s AND COALESCE(person,'')<>''", (pid,))
+        if cur.fetchone()["c"] == 0:
+            con.close()
+            return jsonify({"ok": False, "blocked": True, "hard": True,
+                            "issues": [{"level": "error", "msg": "Asigna responsables primero"}]})
     issues = validate_project(con, pid)
     if any(i["level"] == "error" for i in issues) and not request.json.get("force"):
         con.close()
@@ -473,21 +763,22 @@ def launch(pid):
     payload = build_payload(con, pid)
     token = os.environ.get("MONDAY_API_TOKEN", "").strip()
     ok, detail = False, ""
+    total = sum(len(g["items"]) for g in payload["groups"])
     if token and payload["board_id"]:
         try:
-            import urllib.request
-            # crea un grupo+items en el board configurado (mutation simplificada)
-            q = '{"query":"query{boards(ids:%s){name}}"}' % payload["board_id"]
-            req = urllib.request.Request("https://api.monday.com/v2", data=q.encode(),
-                headers={"Authorization": token, "Content-Type": "application/json"})
-            r = urllib.request.urlopen(req, timeout=15)
-            detail = "Conexión a Monday verificada. " + r.read().decode()[:120]
-            ok = True
+            created, errors = push_to_monday(token, payload)
+            ok = created > 0 and not errors
+            detail = f"Creadas {created}/{total} tarea(s) en Monday."
+            if errors:
+                detail += " Errores: " + " · ".join(str(e)[:140] for e in errors[:3])
+                if len(errors) > 3:
+                    detail += f" (+{len(errors)-3} más)"
         except Exception as e:
             detail = f"Error API Monday: {e}"
     else:
         ok = True
-        detail = "Modo simulación: payload generado y traducido a IDs. Configura MONDAY_API_TOKEN y Board ID para envío real."
+        detail = ("Modo simulación: payload generado y traducido a IDs. "
+                  "Configura MONDAY_API_TOKEN (variable de entorno) y el Board ID para envío real.")
 
     with con.cursor() as cur:
         cur.execute("UPDATE projects SET status='Lanzado', launched_at=now(), monday_payload=%s WHERE id=%s",

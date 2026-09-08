@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Zebra · Automatizador de Cronograma</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --ink:#111315; --paper:#fff; --muted:#6b7177; --line:#e4e7ea;
@@ -20,6 +21,7 @@
   .goldline{height:3px;background:var(--gold)}
   .logo{display:flex;align-items:center;gap:11px;font-weight:800;letter-spacing:3px;font-size:17px}
   .stripe{width:24px;height:24px;border-radius:5px;background:repeating-linear-gradient(135deg,#111 0 4px,var(--gold) 4px 8px);border:1px solid #333}
+  .logoimg{height:54px;width:auto;display:block}
   header .sp{flex:1}
   header select{background:#1c1f22;color:#fff;border:1px solid #34383c}
   .wrap{max-width:1560px;margin:0 auto;padding:18px}
@@ -48,6 +50,13 @@
   td.tname textarea{font-size:11.5px;color:var(--muted);resize:vertical;min-height:24px;margin-top:3px;line-height:1.3}
   .col-days input{width:60px;text-align:center}
   .dates{color:var(--muted);font-size:12px;white-space:nowrap;padding-top:12px}
+  .dcell{display:flex;align-items:center;gap:4px}
+  .dtxt.fixed{font-weight:700;color:var(--ink)}
+  .dwarn{color:var(--warn);cursor:help}
+  button.pen{border:none;background:none;padding:0 3px;font-size:12px;line-height:1;opacity:.35;transition:opacity .15s}
+  tr:hover button.pen{opacity:1}
+  button.pen:hover{background:none;opacity:1}
+  .dates input.dedit{width:120px;border:1px solid var(--line);background:#fff;font-size:12px;padding:4px 6px}
   select.status{border-radius:20px;font-weight:700;font-size:11px;color:#fff;border:none;padding:5px 8px;-webkit-appearance:none;appearance:none;text-align:center;text-align-last:center}
   .st-Pendiente{background:var(--pend)} .st-Enproceso{background:var(--proc)} .st-Completado{background:var(--ok)} .st-Bloqueado{background:var(--block)}
   .add-row td{padding:8px 10px;background:var(--soft)}
@@ -76,17 +85,67 @@
   .sechead{padding:11px 16px;background:var(--ink);color:#fff;font-weight:700;display:flex;justify-content:space-between;align-items:center}
   .help{font-size:11px;color:var(--muted);font-style:italic}
   a.dl{display:inline-block;text-decoration:none}
+  /* ---- Gantt ---- */
+  .gantt{display:flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:#fff;box-shadow:var(--shadow)}
+  .g-labels{flex:0 0 190px;border-right:1px solid var(--line);background:var(--soft)}
+  .g-scroll{flex:1;overflow-x:auto}
+  .g-axis{height:46px;display:flex;flex-direction:column;border-bottom:1px solid var(--line);background:var(--soft)}
+  .g-months{display:flex;height:22px}
+  .g-month{font-size:11px;font-weight:700;color:var(--ink);border-right:1px solid var(--line);padding:3px 6px;white-space:nowrap;overflow:hidden;text-transform:capitalize}
+  .g-days{display:flex;height:24px}
+  .g-day{flex:0 0 auto;font-size:10px;color:var(--muted);text-align:center;border-right:1px solid #eef0f2;line-height:24px}
+  .g-day.we{background:#f0f1f3}
+  .g-axis-spacer{height:46px;border-bottom:1px solid var(--line)}
+  .g-lab{height:40px;display:flex;align-items:center;padding:0 12px;font-size:12.5px;font-weight:600;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .g-row{height:40px;position:relative;border-bottom:1px solid var(--line)}
+  .g-row .we-bg{position:absolute;top:0;bottom:0;background:#f6f7f8}
+  .g-bar{position:absolute;top:8px;height:24px;border-radius:6px;color:#fff;font-size:11px;font-weight:600;line-height:24px;padding:0 7px;white-space:nowrap;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.15);cursor:default}
+  .g-bar.done{opacity:.55}
+  .g-milestone{position:absolute;top:10px;width:18px;height:18px;transform:rotate(45deg);border-radius:3px;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .g-legend{display:flex;flex-wrap:wrap;gap:12px;margin:12px 2px 0;font-size:12px;color:var(--muted)}
+  .g-legend span{display:inline-flex;align-items:center;gap:6px}
+  .g-dot{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .g-today{position:absolute;top:0;bottom:0;width:2px;background:var(--block);z-index:3}
+  /* ---- selector de departamentos (Responsable) ---- */
+  .rcell{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .rchip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#fff;background:var(--c,#9aa0a6);border-radius:20px;padding:2px 5px 2px 10px;white-space:nowrap}
+  .rchip button{all:unset;cursor:pointer;width:15px;height:15px;line-height:15px;text-align:center;border-radius:50%;background:rgba(255,255,255,.3);font-size:10px;font-weight:700}
+  .rchip button:hover{background:rgba(255,255,255,.55)}
+  td select.raddsel{width:auto;min-width:74px;border:1px dashed var(--line);border-radius:20px;font-size:11px;color:var(--muted);background:#fff;padding:3px 6px}
+  td select.raddsel:hover{border-color:var(--gold);background:#fff}
+  /* ---- login ---- */
+  .login{min-height:70vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .login-card{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:40px 34px;max-width:400px;width:100%;text-align:center}
+  .login-card .stripe{width:44px;height:44px;margin:0 auto 14px}
+  .login-card h2{margin:0 0 6px;font-size:20px}
+  .login-card p{margin:0 0 22px;color:var(--muted);font-size:13px}
+  .login-card #gbtn{display:flex;justify-content:center;min-height:44px}
+  .login-card .issue{margin-top:16px;text-align:left}
+  /* ---- arrastrar para reordenar ---- */
+  .drag{cursor:grab;color:var(--muted);font-size:15px;line-height:1;user-select:none;padding:2px 2px;border-radius:4px}
+  .drag:hover{background:var(--soft);color:var(--ink)}
+  .drag:active{cursor:grabbing}
+  .line-head .drag{color:#bbb}
+  .line-head .drag:hover{background:rgba(255,255,255,.12);color:#fff}
+  tr.dragover td{box-shadow:inset 0 2px 0 var(--gold)}
+  .card.dragover{outline:2px dashed var(--gold);outline-offset:2px}
+  .dragging{opacity:.45}
 </style>
 </head>
 <body>
 <header>
   <div class="hbar">
-    <div class="logo"><span class="stripe"></span> ZEBRA</div>
+    <div class="logo"><img src="/static/logo.png" alt="Zebra" class="logoimg"></div>
     <span class="small" style="color:#9aa0a6;letter-spacing:1px">CRONOGRAMA</span>
     <div class="sp"></div>
-    <select id="projSel" onchange="loadProject(this.value)"></select>
-    <button class="gold" onclick="openNewProj()">+ Nuevo proyecto</button>
-    <button onclick="setTab('monday');render()" id="btnMonday" title="Configuración Monday">⚙ Monday</button>
+    <div id="hdrActions" style="display:flex;gap:14px;align-items:center">
+      <select id="projSel" onchange="openProj(this.value)"></select>
+      <button class="gold" onclick="openNewProj()">+ Nuevo proyecto</button>
+      <button onclick="setTab('manage');render()" id="btnManage" title="Proyectos y plantillas">📁 Proyectos</button>
+      <button onclick="setTab('monday');render()" id="btnMonday" title="Configuración Monday">⚙ Monday</button>
+      <span id="userChip" class="small" style="color:#9aa0a6"></span>
+      <button id="btnLogout" style="display:none" onclick="logout()" title="Cerrar sesión">Salir</button>
+    </div>
   </div>
   <div class="goldline"></div>
 </header>
@@ -98,7 +157,8 @@
   <div class="dh">Nuevo proyecto <button onclick="dlgNew.close()">✕</button></div>
   <div class="db">
     <label class="fl">Nombre del cliente</label>
-    <input id="npClient" placeholder="Ej. Clínica Sonrisa" style="width:100%">
+    <input id="npClient" placeholder="Ej. Clínica Sonrisa" style="width:100%" autocomplete="off">
+    <div class="small" style="margin-top:4px">Se crea como cliente nuevo en Monday al publicar.</div>
     <label class="fl">Fecha inicial</label>
     <input id="npStart" type="date" style="width:100%">
     <label class="fl">Partir de</label>
@@ -131,14 +191,34 @@
   <div class="df" id="launchFoot"><button onclick="dlgLaunch.close()">Cerrar</button></div>
 </dialog>
 
+<!-- confirmar (en lugar de window.confirm, que algunos navegadores bloquean) -->
+<dialog id="dlgConfirm">
+  <div class="dh"><span id="confTitle">Confirmar</span> <button onclick="confResolve(false)">✕</button></div>
+  <div class="db"><p id="confMsg" style="margin:0;line-height:1.4"></p></div>
+  <div class="df"><button onclick="confResolve(false)">Cancelar</button>
+    <button class="ghostdel" id="confOk" style="padding:8px 13px" onclick="confResolve(true)">Eliminar</button></div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <script>
-let STATE=null, TAB="crono", TEMPLATES=[], CFG={config:{},keys:[]};
+let STATE=null, TAB="crono", TEMPLATES=[], CFG={config:{},keys:[]}, DEPTS_CAT=[], PEOPLE_CAT=[];
 const STATUSES=["Pendiente","En proceso","Completado","Bloqueado"];
 const $=s=>document.querySelector(s);
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2300);}
-async function api(url,opt){const r=await fetch(url,Object.assign({headers:{"Content-Type":"application/json"}},opt));return r.json();}
+// confirmación propia (window.confirm puede estar bloqueado por el navegador)
+let _confRes=null;
+function confirmDialog(msg,okLabel){
+  $("#confMsg").textContent=msg; $("#confOk").textContent=okLabel||"Eliminar";
+  try{dlgConfirm.showModal();}catch(e){}
+  return new Promise(res=>{_confRes=res;});
+}
+function confResolve(v){const r=_confRes;_confRes=null;try{dlgConfirm.close();}catch(e){}if(r)r(v);}
+async function api(url,opt){
+  const r=await fetch(url,Object.assign({headers:{"Content-Type":"application/json"}},opt));
+  if(r.status===401 && url.startsWith("/api/")){location.reload();return {};}
+  return r.json();
+}
 function fmt(d){if(!d)return "—";const p=String(d).slice(0,10).split("-");return `${p[2]}/${p[1]}`;}
 function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
 function stClass(s){return "st-"+s.replace(/\s/g,"");}
@@ -168,11 +248,12 @@ async function createProject(){
   dlgNew.close(); $("#npClient").value="";
   await boot(); $("#projSel").value=r.id; loadProject(r.id); toast("Proyecto creado");
 }
-async function loadProject(id){STATE=await api(`/api/projects/${id}`);STATE.id=parseInt(id);CFG=await api("/api/config");render();}
+async function loadProject(id){STATE=await api(`/api/projects/${id}`);STATE.id=parseInt(id);CFG=await api("/api/config");DEPTS_CAT=await api("/api/monday/departments");PEOPLE_CAT=await api("/api/monday/people");render();}
 function setTab(t){TAB=t;}
 
 function render(){
   if(TAB=="monday"){renderMondayTab();return;}
+  if(TAB=="manage"){renderManageTab();return;}
   if(!STATE){boot();return;}
   const p=STATE.project;
   let h=`<div class="bar">
@@ -181,6 +262,7 @@ function render(){
     <span class="pill">Estado</span>
     <select onchange="updMeta('status',this.value)">${["En proceso","Lanzado","Pausado"].map(s=>`<option ${p.status==s?'selected':''}>${s}</option>`).join("")}</select>
     <div style="flex:1"></div>
+    <button onclick="autosort()" title="Ordenar las tareas de cada línea por fecha de inicio (más próxima primero)">⇅ Ordenar automáticamente</button>
     <button onclick="openTpl()">Guardar como plantilla</button>
     <a class="dl" href="/api/projects/${STATE.id}/pdf" target="_blank"><button>⬇ PDF</button></a>
     <button class="ghostdel" onclick="delProject()">Eliminar</button>
@@ -188,11 +270,13 @@ function render(){
   </div>
   <div class="tabs">
     <button class="${TAB=='crono'?'act':''}" onclick="setTab('crono');render()">Cronograma</button>
+    <button class="${TAB=='gantt'?'act':''}" onclick="setTab('gantt');render()">Gantt</button>
     <button class="${TAB=='resumen'?'act':''}" onclick="setTab('resumen');render()">Resumen</button>
     <button class="${TAB=='resp'?'act':''}" onclick="setTab('resp');render()">Responsables</button>
     <button class="${TAB=='feriados'?'act':''}" onclick="setTab('feriados');render()">Feriados</button>
   </div>`;
   if(TAB=="crono") h+=renderCrono();
+  if(TAB=="gantt") h+=renderGantt();
   if(TAB=="resumen"){h+=`<div id="sumBox"><div class="empty">Calculando…</div></div>`;loadSummary();}
   if(TAB=="resp") h+=renderResp();
   if(TAB=="feriados"){h+=`<div id="holBox"><div class="empty">Cargando…</div></div>`;loadHolidays();}
@@ -200,41 +284,233 @@ function render(){
 }
 
 function allTasks(){const a=[];STATE.lines.forEach(l=>l.tasks.forEach(t=>a.push({id:t.id,name:`[${l.name.slice(0,10)}] ${t.name.slice(0,38)}`})));return a;}
+function findTask(tid){for(const l of STATE.lines){const t=l.tasks.find(x=>x.id===tid);if(t)return t;}return null;}
+function respDepts(t){return (t.responsible||"").split(",").map(s=>s.trim()).filter(Boolean);}
+
+// celda "Responsable": departamentos como etiquetas de color + lista para agregar
+function respCell(t){
+  const cur=respDepts(t);
+  const avail=DEPTS_CAT.map(d=>d.name).filter(n=>!cur.includes(n));
+  const jss=s=>"'"+String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'")+"'";
+  const chips=cur.map(dep=>`<span class="rchip" style="--c:${deptColor(dep)}">${esc(dep)}<button title="Quitar" onclick="setResp(${t.id},${jss(dep)},false)">✕</button></span>`).join("");
+  const add=avail.length?`<select class="raddsel" onchange="if(this.value){setResp(${t.id},this.value,true)}">
+    <option value="">+ depto</option>${avail.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("")}</select>`:"";
+  return `<div class="rcell">${chips||'<span class="small" style="color:var(--muted)">—</span>'}${add}</div>`;
+}
+// celda "Inicio": fecha compacta + ✏️ para fijarla a mano en cualquier tarea.
+// Muestra siempre start_date (lo que calculó el motor), que puede diferir del
+// override si éste cayó en fin de semana o feriado.
+function startCell(t){
+  const ov=t.start_override?String(t.start_override).slice(0,10):"";
+  const shown=String(t.start_date||"").slice(0,10);
+  const dep=t.depends_on?findTask(t.depends_on):null;
+  const broken=ov&&dep&&dep.end_date&&shown&&shown<String(dep.end_date).slice(0,10);
+  let tip;
+  if(ov) tip="Inicio fijado manualmente"+(shown&&shown!==ov?` (${fmt(ov)} cayó en día inhábil)`:"");
+  else tip=dep?"Inicio automático: sigue a la tarea de la que depende":"Inicio automático (secuencial)";
+  const warn=broken?`<span class="dwarn" title="Empieza antes de que termine «${esc(dep.name)}»">⚠</span>`:"";
+  const reset=ov?`<button class="ghostdel" style="padding:1px 5px" title="Volver a automático" onclick="updTask(${t.id},'start_override',null)">↺</button>`:"";
+  return `<td class="dates" id="sc${t.id}"><span class="dcell">
+    <span class="dtxt${ov?' fixed':''}" title="${esc(tip)}">${fmt(t.start_date)}</span>${warn}
+    <button class="pen" title="Editar fecha de inicio" onclick="editStart(${t.id})">✏️</button>${reset}
+  </span></td>`;
+}
+// edición en línea: el ✏️ cambia la celda por un selector de fecha
+let SEDIT=null;
+function editStart(tid){
+  const td=$("#sc"+tid), t=findTask(tid); if(!td||!t) return;
+  SEDIT={tid,saved:false};
+  td.innerHTML=`<input type="date" class="dedit" value="${String(t.start_override||t.start_date||"").slice(0,10)}"
+    onchange="saveStart(${tid},this.value)" onblur="cancelStart(${tid})"
+    onkeyup="if(event.key==='Escape')this.blur()">`;
+  const i=td.querySelector("input"); i.focus();
+  try{ if(i.showPicker) i.showPicker(); }catch(e){}
+}
+async function saveStart(tid,v){ if(SEDIT&&SEDIT.tid===tid)SEDIT.saved=true; await updTask(tid,'start_override',v||null); }
+function cancelStart(tid){
+  // Chrome dispara blur al abrir el calendario: sólo repintamos si de verdad se salió sin guardar
+  setTimeout(()=>{
+    const i=document.querySelector("#sc"+tid+" input");
+    if(SEDIT&&SEDIT.tid===tid&&!SEDIT.saved&&document.activeElement!==i){SEDIT=null;render();}
+  },250);
+}
+async function setResp(tid,dep,add){
+  const t=findTask(tid); if(!t) return;
+  let cur=respDepts(t);
+  if(add){ if(!cur.includes(dep)) cur.push(dep); }
+  else { cur=cur.filter(x=>x!==dep); }
+  await updTask(tid,'responsible',cur.join(", "));
+}
+
+// ---------- arrastrar y soltar (reordenar tareas y líneas)
+let DRAG_TASK=null, DRAG_LINE=null;
+function clearDnd(){document.querySelectorAll(".dragging,.dragover").forEach(x=>x.classList.remove("dragging","dragover"));}
+function taskDragStart(e,tid,lid){DRAG_TASK={tid,lid};e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text","t");const tr=e.target.closest("tr");if(tr)tr.classList.add("dragging");e.stopPropagation();}
+function taskDragOver(e,tid,lid){if(!DRAG_TASK||DRAG_TASK.lid!==lid)return;e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect="move";document.querySelectorAll("tr.dragover").forEach(x=>x.classList.remove("dragover"));if(tid!==DRAG_TASK.tid)e.currentTarget.classList.add("dragover");}
+function taskDragLeave(e){e.currentTarget.classList.remove("dragover");}
+function taskDragEnd(e){DRAG_TASK=null;clearDnd();}
+async function taskDrop(e,targetTid,lid){
+  e.preventDefault();e.stopPropagation();
+  const d=DRAG_TASK;DRAG_TASK=null;clearDnd();
+  if(!d||d.lid!==lid||d.tid===targetTid)return;
+  const line=STATE.lines.find(l=>l.id===lid);if(!line)return;
+  const ids=line.tasks.map(t=>t.id);
+  const from=ids.indexOf(d.tid);if(from<0)return;
+  const moved=ids.splice(from,1)[0];
+  let idx=ids.indexOf(targetTid);if(idx<0)idx=ids.length;
+  ids.splice(idx,0,moved);
+  await api(`/api/lines/${lid}/reorder`,{method:"PUT",body:JSON.stringify({order:ids})});
+  await loadProject(STATE.id);
+}
+function lineDragStart(e,lid){DRAG_LINE={lid};e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text","l");const c=e.target.closest(".card");if(c)c.classList.add("dragging");}
+function lineDragOver(e,lid){if(!DRAG_LINE)return;e.preventDefault();e.dataTransfer.dropEffect="move";document.querySelectorAll(".card.dragover").forEach(x=>x.classList.remove("dragover"));if(lid!==DRAG_LINE.lid)e.currentTarget.classList.add("dragover");}
+function lineDragLeave(e){if(e.currentTarget===e.target)e.currentTarget.classList.remove("dragover");}
+function lineDragEnd(e){DRAG_LINE=null;clearDnd();}
+async function lineDrop(e,targetLid){
+  e.preventDefault();
+  const d=DRAG_LINE;DRAG_LINE=null;clearDnd();
+  if(!d||d.lid===targetLid)return;
+  const ids=STATE.lines.map(l=>l.id);
+  const from=ids.indexOf(d.lid);if(from<0)return;
+  const moved=ids.splice(from,1)[0];
+  let idx=ids.indexOf(targetLid);if(idx<0)idx=ids.length;
+  ids.splice(idx,0,moved);
+  await api(`/api/projects/${STATE.id}/lines/reorder`,{method:"PUT",body:JSON.stringify({order:ids})});
+  await loadProject(STATE.id);
+}
 
 function renderCrono(){
   let h="";
   STATE.lines.forEach(line=>{
-    h+=`<div class="card"><div class="line-head">
+    h+=`<div class="card" data-lid="${line.id}" ondragover="lineDragOver(event,${line.id})" ondrop="lineDrop(event,${line.id})" ondragleave="lineDragLeave(event)"><div class="line-head">
+      <span class="drag" draggable="true" title="Arrastra para reordenar la línea" ondragstart="lineDragStart(event,${line.id})" ondragend="lineDragEnd(event)">⠿</span>
       <input value="${esc(line.name)}" onchange="renameLine(${line.id},this.value)">
       <span class="small" style="color:#ccc">${line.tasks.length} tareas</span><div style="flex:1"></div>
+      <span class="small" style="color:#ccc">Monday:</span>
+      <button style="padding:4px 9px;font-size:12px" title="Marcar todas para Monday" onclick="setLineMonday(${line.id},true)">✓ Todos</button>
+      <button style="padding:4px 9px;font-size:12px" title="Desmarcar todas" onclick="setLineMonday(${line.id},false)">✕ Ninguno</button>
       <button class="ghostdel" style="background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.2)" onclick="delLine(${line.id})">Quitar línea</button>
     </div><table><thead><tr>
-      <th style="width:32%">Tarea / descripción</th><th>Estado</th><th>Días</th><th>Inicio</th><th>Final</th><th>Responsable</th><th>Depende de</th><th></th>
+      <th style="width:32%">Tarea / descripción</th><th>Estado</th><th>Días</th><th>Inicio</th><th>Final</th><th>Responsable</th><th>Depende de</th><th title="Crear en Monday al publicar" style="text-align:center">Monday</th><th></th>
     </tr></thead><tbody>`;
     line.tasks.forEach(t=>{
       const deps=allTasks().filter(x=>x.id!=t.id);
-      h+=`<tr>
+      h+=`<tr data-tid="${t.id}" ondragover="taskDragOver(event,${t.id},${line.id})" ondrop="taskDrop(event,${t.id},${line.id})" ondragleave="taskDragLeave(event)">
         <td class="tname">
-          <input value="${esc(t.name)}" onchange="updTask(${t.id},'name',this.value)">
-          <textarea rows="1" placeholder="+ descripción (opcional)" onchange="updTask(${t.id},'description',this.value)">${esc(t.description||"")}</textarea>
+          <div style="display:flex;align-items:flex-start;gap:6px">
+            <span class="drag" draggable="true" title="Arrastra para reordenar la tarea" ondragstart="taskDragStart(event,${t.id},${line.id})" ondragend="taskDragEnd(event)">⠿</span>
+            <div style="flex:1;min-width:0">
+              <input value="${esc(t.name)}" onchange="updTask(${t.id},'name',this.value)">
+              <textarea rows="1" placeholder="+ descripción (opcional)" onchange="updTask(${t.id},'description',this.value)">${esc(t.description||"")}</textarea>
+            </div>
+          </div>
         </td>
         <td><select class="status ${stClass(t.status)}" onchange="updTask(${t.id},'status',this.value)">
           ${STATUSES.map(s=>`<option ${t.status==s?'selected':''}>${s}</option>`).join("")}</select></td>
         <td class="col-days"><input type="number" step="0.5" min="0" value="${t.days}" onchange="updTask(${t.id},'days',parseFloat(this.value)||0)"></td>
-        <td class="dates">${fmt(t.start_date)}</td>
+        ${startCell(t)}
         <td class="dates">${fmt(t.end_date)}</td>
-        <td><input value="${esc(t.responsible||'')}" onchange="updTask(${t.id},'responsible',this.value)" placeholder="—"></td>
+        <td>${respCell(t)}</td>
         <td><select onchange="updTask(${t.id},'depends_on',this.value?parseInt(this.value):null)">
           <option value="">Secuencial</option>
           ${deps.map(d=>`<option value="${d.id}" ${t.depends_on==d.id?'selected':''}>${esc(d.name)}</option>`).join("")}
         </select></td>
+        <td style="text-align:center"><input type="checkbox" ${t.to_monday!==false?'checked':''} title="Crear esta tarea en Monday al publicar" onchange="updTask(${t.id},'to_monday',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>
         <td><button class="ghostdel" onclick="delTask(${t.id})">✕</button></td>
       </tr>`;
     });
-    h+=`<tr class="add-row"><td colspan="8"><button onclick="addTask(${line.id})">+ Agregar tarea</button></td></tr></tbody></table></div>`;
+    h+=`<tr class="add-row"><td colspan="9"><button onclick="addTask(${line.id})">+ Agregar tarea</button></td></tr></tbody></table></div>`;
   });
   h+=`<button class="gold" onclick="addLine()">+ Agregar línea de trabajo paralela</button>`;
   return h;
+}
+
+// ---------- Gantt (líneas horizontales por fecha, color por departamento)
+const G_PALETTE=["#2563eb","#c9a227","#1f9d55","#7c3aed","#e8590c","#0891b2","#db2777","#475569"];
+function pd(s){return s?new Date(String(s).slice(0,10)+"T00:00:00"):null;}
+function dayDiff(a,b){return Math.round((a-b)/86400000);}
+function firstDept(resp){return (resp||"").split(",")[0].trim();}
+function deptColor(name){
+  if(!name) return "#9aa0a6";
+  const d=DEPTS_CAT.find(x=>x.name===name);
+  if(d&&d.color) return d.color;
+  const i=DEPTS_CAT.findIndex(x=>x.name===name);
+  return G_PALETTE[(i>=0?i:0)%G_PALETTE.length];
+}
+const MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+
+function renderGantt(){
+  // reunir tareas con fecha
+  let min=null,max=null;
+  STATE.lines.forEach(l=>l.tasks.forEach(t=>{
+    if(!t.start_date) return;
+    const s=pd(t.start_date), e=pd(t.end_date||t.start_date);
+    if(!min||s<min) min=s; if(!max||e>max) max=e;
+  }));
+  if(!min) return `<div class="card"><div class="empty">No hay tareas con fechas todavía.<br>Agrega días a las tareas en el Cronograma para verlas aquí.</div></div>`;
+
+  const DAY=24, total=dayDiff(max,min)+1, W=total*DAY;
+  const used=new Set();
+
+  // eje: meses + días
+  let months="", daysHtml="";
+  const segs=[]; // {label,count}
+  for(let i=0;i<total;i++){
+    const d=new Date(min.getTime()+i*86400000);
+    const we=d.getDay()===0||d.getDay()===6;
+    daysHtml+=`<div class="g-day${we?' we':''}" style="width:${DAY}px">${d.getDate()}</div>`;
+    const key=d.getMonth()+"-"+d.getFullYear();
+    if(!segs.length||segs[segs.length-1].key!==key)
+      segs.push({key,label:`${MESES[d.getMonth()]} ${d.getFullYear()}`,count:1});
+    else segs[segs.length-1].count++;
+  }
+  segs.forEach(s=>{months+=`<div class="g-month" style="width:${s.count*DAY}px">${s.label}</div>`;});
+
+  // marcador de hoy
+  const today=pd(new Date().toISOString().slice(0,10));
+  let todayMark="";
+  if(today>=min&&today<=max){const x=dayDiff(today,min)*DAY;todayMark=`<div class="g-today" style="left:${x}px"></div>`;}
+  // fondo de fines de semana (reutilizable por fila)
+  let weBg="";
+  for(let i=0;i<total;i++){
+    const d=new Date(min.getTime()+i*86400000);
+    if(d.getDay()===0||d.getDay()===6) weBg+=`<div class="we-bg" style="left:${i*DAY}px;width:${DAY}px"></div>`;
+  }
+
+  // etiquetas (izquierda) y filas (derecha) alineadas por índice de línea
+  let labs="", rows="";
+  STATE.lines.forEach(line=>{
+    labs+=`<div class="g-lab" title="${esc(line.name)}">${esc(line.name)}</div>`;
+    let bars="";
+    line.tasks.forEach(t=>{
+      if(!t.start_date) return;
+      const s=pd(t.start_date), e=pd(t.end_date||t.start_date);
+      const off=dayDiff(s,min)*DAY, dur=(dayDiff(e,s)+1)*DAY;
+      const dep=firstDept(t.responsible); used.add(dep||"(sin depto)");
+      const col=deptColor(dep);
+      const done=t.status==="Completado"?" done":"";
+      const tip=`${t.name} · ${dep||'sin depto'} · ${fmt(t.start_date)}→${fmt(t.end_date)} · ${t.status}`;
+      if(t.days&&t.days>0){
+        bars+=`<div class="g-bar${done}" style="left:${off}px;width:${Math.max(dur-3,14)}px;background:${col}" title="${esc(tip)}">${esc(t.name)}</div>`;
+      }else{
+        bars+=`<div class="g-milestone" style="left:${off}px;background:${col}" title="${esc(tip)}"></div>`;
+      }
+    });
+    rows+=`<div class="g-row" style="width:${W}px">${weBg}${todayMark}${bars}</div>`;
+  });
+
+  // leyenda de departamentos usados
+  let legend="";
+  used.forEach(dep=>{legend+=`<span><i class="g-dot" style="background:${deptColor(dep==='(sin depto)'?'':dep)}"></i>${esc(dep)}</span>`;});
+
+  return `<div class="gantt">
+    <div class="g-labels"><div class="g-axis-spacer"></div>${labs}</div>
+    <div class="g-scroll">
+      <div class="g-axis" style="width:${W}px"><div class="g-months">${months}</div><div class="g-days">${daysHtml}</div></div>
+      ${rows}
+    </div>
+  </div>
+  <div class="g-legend">${legend}<span style="margin-left:auto"><i class="g-dot" style="background:var(--block);width:2px;border-radius:0"></i>Hoy · ◆ hito (0 días)</span></div>`;
 }
 
 async function loadSummary(){
@@ -257,18 +533,32 @@ async function loadSummary(){
   const el=$("#sumBox"); if(el) el.innerHTML=h;
 }
 
+function personOptions(depto, current){
+  // SOLO la gente del catálogo (pestaña Monday) asociada a ESTE departamento
+  const list=PEOPLE_CAT.filter(p=>p.department===depto);
+  const ph=list.length?'— elegir persona —':'— sin personas en este depto —';
+  let opts=`<option value="">${ph}</option>`, found=false;
+  list.forEach(p=>{
+    const sel=p.name===current; if(sel) found=true;
+    const warn=p.monday_user_id?'':'  ⚠ sin user_id';
+    opts+=`<option ${sel?'selected':''}>${esc(p.name)}${warn}</option>`;
+  });
+  if(current&&!found) opts+=`<option selected>${esc(current)}</option>`;  // conserva valor previo
+  return opts;
+}
+
 function renderResp(){
   let h=`<div class="card"><div class="sechead"><span>Responsables por departamento</span></div>
-    <table><thead><tr><th style="width:25%">Departamento</th><th>Persona</th><th>Email</th></tr></thead><tbody>`;
+    <table><thead><tr><th style="width:25%">Departamento</th><th>Persona (se dispara en Monday)</th><th>Email</th></tr></thead><tbody>`;
   STATE.responsibles.forEach(r=>{
     h+=`<tr>
       <td><input value="${esc(r.depto)}" onchange="updResp(${r.id},'depto',this.value)"></td>
-      <td><input value="${esc(r.person||'')}" placeholder="Nombre" onchange="updResp(${r.id},'person',this.value)"></td>
+      <td><select onchange="updResp(${r.id},'person',this.value)">${personOptions(r.depto, r.person||'')}</select></td>
       <td><input value="${esc(r.email||'')}" placeholder="correo@zebra.mx" onchange="updResp(${r.id},'email',this.value)"></td>
     </tr>`;
   });
   h+=`</tbody></table></div>
-  <p class="small">Tip: si escribes el nombre del depto exacto en el campo "Responsable" de una tarea, al publicar se traduce a la persona y user_id de Monday del catálogo.</p>`;
+  <p class="small">La <b>persona</b> que elijas aquí para cada departamento es la que se asigna en Monday al publicar (vía su <code>user_id</code>). La lista sale del catálogo de la pestaña ⚙ Monday; agrega ahí a la gente y su <code>user_id</code>, y asóciala a su departamento.</p>`;
   return h;
 }
 
@@ -291,6 +581,49 @@ async function addHoliday(){
 }
 async function delHoliday(id){await api(`/api/holidays/${id}`,{method:"DELETE"});await loadProject(STATE.id);setTab('feriados');render();}
 
+// ---------- Administrar proyectos y plantillas
+async function renderManageTab(){
+  const projs=await api("/api/projects");
+  const tpls=await api("/api/templates");
+  let h=`<div class="bar"><button onclick="setTab('crono');boot()">← Volver al cronograma</button>
+    <div style="flex:1"></div><button class="gold" onclick="openNewProj()">+ Nuevo proyecto</button></div>`;
+
+  h+=`<div class="card"><div class="sechead"><span>Proyectos / Cronogramas</span><span class="small" style="color:#ccc">${projs.length}</span></div>
+    <table><thead><tr><th style="width:38%">Cliente</th><th>Estado</th><th>Inicio</th><th style="text-align:right">Acciones</th></tr></thead><tbody>`;
+  if(!projs.length) h+=`<tr><td colspan="4" class="small" style="padding:16px">No hay proyectos todavía.</td></tr>`;
+  projs.forEach(p=>{
+    h+=`<tr>
+      <td><b>${esc(p.client)}</b></td>
+      <td><span class="pill">${esc(p.status)}</span></td>
+      <td>${fmt(p.start_date)}/${String(p.start_date).slice(0,4)}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button onclick="openProj(${p.id})">✏️ Abrir / editar</button>
+        <a class="dl" href="/api/projects/${p.id}/pdf" target="_blank"><button>⬇ PDF</button></a>
+        <button class="ghostdel" onclick="delProjFromManage(${p.id})">Eliminar</button>
+      </td></tr>`;
+  });
+  h+=`</tbody></table></div>`;
+
+  h+=`<div class="card"><div class="sechead"><span>Plantillas (solo estructura)</span><span class="small" style="color:#ccc">${tpls.length}</span></div>
+    <table><thead><tr><th style="width:55%">Nombre</th><th>Creada</th><th style="text-align:right">Acciones</th></tr></thead><tbody>`;
+  if(!tpls.length) h+=`<tr><td colspan="3" class="small" style="padding:16px">No hay plantillas. Crea una desde un proyecto con el botón “Guardar como plantilla”.</td></tr>`;
+  tpls.forEach(t=>{
+    h+=`<tr><td><b>${esc(t.name)}</b></td>
+      <td>${fmt(t.created_at)}/${String(t.created_at).slice(0,4)}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="gold" onclick="newFromTemplate(${t.id})">+ Nuevo proyecto</button>
+        <button class="ghostdel" onclick="delTemplate(${t.id})">Eliminar</button>
+      </td></tr>`;
+  });
+  h+=`</tbody></table></div>
+  <p class="small">Las plantillas guardan solo la estructura (líneas, tareas, días, descripciones); no incluyen responsables, fechas ni estados.</p>`;
+  $("#app").innerHTML=h;
+}
+async function openProj(id){TAB='crono';await loadProject(id);const sel=$("#projSel");if(sel)sel.value=id;}
+async function delProjFromManage(id){if(!await confirmDialog("¿Eliminar todo el proyecto y sus tareas?"))return;await api(`/api/projects/${id}`,{method:"DELETE"});await boot();toast("Proyecto eliminado");setTab('manage');render();}
+async function delTemplate(id){if(!await confirmDialog("¿Eliminar esta plantilla?"))return;await api(`/api/templates/${id}`,{method:"DELETE"});toast("Plantilla eliminada");renderManageTab();}
+async function newFromTemplate(id){await openNewProj();const t=$("#npTemplate");if(t)t.value=String(id);}
+
 // ---------- Monday tab (config + catálogos)
 async function renderMondayTab(){
   const cfg=await api("/api/config");
@@ -307,36 +640,59 @@ async function renderMondayTab(){
   });
   h+=`</div></div></div>`;
 
-  // personas
+  // mapeo de estatus -> label/índice del board
+  let smap={}; try{smap=JSON.parse(cfg.config.status_map||"{}");}catch(e){}
+  h+=`<div class="card"><div class="sechead"><span>Mapeo de estatus → Monday</span></div><div style="padding:16px">
+    <p class="small">Cada estatus de la app se traduce al <b>label</b> o <b>índice</b> de tu columna de Estatus en Monday. Escribe un <b>número</b> para usar índice (ej. <code>2</code>) o el <b>texto exacto</b> del label (ej. <code>En proceso</code>). Déjalo <b>vacío</b> para no escribir esa columna y dejar el estatus por defecto del board.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
+    ${STATUSES.map((s,i)=>`<div><label class="fl">${esc(s)}</label><input style="width:100%" id="sm_${i}" value="${esc(smap[s]||'')}" placeholder="label o índice" onchange="saveStatusMap()"></div>`).join("")}
+    </div></div></div>`;
+
+  // opciones de departamento (para asociar personas)
+  const deptOpts=sel=>`<option value="">— sin depto —</option>`+depts.map(d=>`<option value="${esc(d.name)}" ${sel===d.name?'selected':''}>${esc(d.name)}</option>`).join("");
+
+  // personas (cada persona pertenece a un departamento)
   h+=`<div class="card"><div class="sechead"><span>Catálogo de personas → user_id de Monday</span></div>
-    <table><thead><tr><th style="width:45%">Persona (Zebra)</th><th>Monday user_id</th><th></th></tr></thead><tbody>`;
+    <p class="small" style="padding:8px 16px 0">Asocia cada persona a su departamento. Un departamento puede tener varias personas; al publicar, una tarea cuyo responsable sea un depto incluye a todas sus personas con user_id.</p>
+    <table><thead><tr><th style="width:34%">Persona (Zebra)</th><th>Departamento</th><th>Monday user_id</th><th></th></tr></thead><tbody>`;
   people.forEach(p=>{
     h+=`<tr><td><input value="${esc(p.name)}" onchange="updPerson(${p.id},'name',this.value)"></td>
+      <td><select onchange="updPerson(${p.id},'department',this.value)">${deptOpts(p.department||'')}</select></td>
       <td><input value="${esc(p.monday_user_id||'')}" placeholder="Ej. 12345678" onchange="updPerson(${p.id},'monday_user_id',this.value)"></td>
       <td><button class="ghostdel" onclick="delPerson(${p.id})">✕</button></td></tr>`;
   });
-  h+=`<tr class="add-row"><td><input id="npName" placeholder="Nombre"></td><td><input id="npUid" placeholder="user_id"></td>
+  h+=`<tr class="add-row"><td><input id="npName" placeholder="Nombre"></td>
+    <td><select id="npDept">${deptOpts('')}</select></td>
+    <td><input id="npUid" placeholder="user_id"></td>
     <td><button onclick="addPerson()">+ Agregar</button></td></tr></tbody></table></div>`;
 
-  // departamentos
-  h+=`<div class="card"><div class="sechead"><span>Catálogo de departamentos → label / índice de Monday</span></div>
-    <table><thead><tr><th style="width:34%">Departamento</th><th>Label en Monday</th><th>Índice</th><th></th></tr></thead><tbody>`;
+  // departamentos (con color para el Gantt)
+  h+=`<div class="card"><div class="sechead"><span>Catálogo de departamentos → label / índice de Monday + color</span></div>
+    <table><thead><tr><th style="width:30%">Departamento</th><th>Label en Monday</th><th>Índice</th><th>Color</th><th></th></tr></thead><tbody>`;
   depts.forEach(d=>{
     h+=`<tr><td><input value="${esc(d.name)}" onchange="updDept(${d.id},'name',this.value)"></td>
       <td><input value="${esc(d.monday_label||'')}" placeholder="Ej. Comercial" onchange="updDept(${d.id},'monday_label',this.value)"></td>
       <td><input type="number" value="${d.monday_index??''}" style="width:70px" onchange="updDept(${d.id},'monday_index',this.value?parseInt(this.value):null)"></td>
+      <td><input type="color" value="${d.color||'#6b7177'}" style="width:46px;height:30px;padding:2px" onchange="updDept(${d.id},'color',this.value)"></td>
       <td><button class="ghostdel" onclick="delDept(${d.id})">✕</button></td></tr>`;
   });
   h+=`<tr class="add-row"><td><input id="ndName" placeholder="Depto"></td><td><input id="ndLabel" placeholder="label"></td>
     <td><input id="ndIdx" type="number" placeholder="idx" style="width:70px"></td>
+    <td><input id="ndColor" type="color" value="#6b7177" style="width:46px;height:30px;padding:2px"></td>
     <td><button onclick="addDept()">+ Agregar</button></td></tr></tbody></table></div>`;
   $("#app").innerHTML=h;
 }
 async function saveCfg(k,v){await api("/api/config",{method:"PUT",body:JSON.stringify({[k]:v})});toast("Guardado");}
-async function addPerson(){const n=$("#npName").value.trim();if(!n)return;await api("/api/monday/people",{method:"POST",body:JSON.stringify({name:n,monday_user_id:$("#npUid").value})});renderMondayTab();}
+async function saveStatusMap(){
+  const m={};
+  STATUSES.forEach((s,i)=>{const el=document.getElementById('sm_'+i);const v=(el&&el.value||'').trim();if(v!=='')m[s]=v;});
+  await api("/api/config",{method:"PUT",body:JSON.stringify({status_map:JSON.stringify(m)})});
+  toast("Mapeo de estatus guardado");
+}
+async function addPerson(){const n=$("#npName").value.trim();if(!n)return;await api("/api/monday/people",{method:"POST",body:JSON.stringify({name:n,monday_user_id:$("#npUid").value,department:$("#npDept").value})});renderMondayTab();}
 async function updPerson(id,k,v){await api(`/api/monday/people/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});}
 async function delPerson(id){await api(`/api/monday/people/${id}`,{method:"DELETE"});renderMondayTab();}
-async function addDept(){const n=$("#ndName").value.trim();if(!n)return;await api("/api/monday/departments",{method:"POST",body:JSON.stringify({name:n,monday_label:$("#ndLabel").value,monday_index:$("#ndIdx").value?parseInt($("#ndIdx").value):null})});renderMondayTab();}
+async function addDept(){const n=$("#ndName").value.trim();if(!n)return;await api("/api/monday/departments",{method:"POST",body:JSON.stringify({name:n,monday_label:$("#ndLabel").value,monday_index:$("#ndIdx").value?parseInt($("#ndIdx").value):null,color:$("#ndColor").value})});renderMondayTab();}
 async function updDept(id,k,v){await api(`/api/monday/departments/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});}
 async function delDept(id){await api(`/api/monday/departments/${id}`,{method:"DELETE"});renderMondayTab();}
 
@@ -346,10 +702,16 @@ async function updTask(id,k,v){await api(`/api/tasks/${id}`,{method:"PUT",body:J
 async function delTask(id){await api(`/api/tasks/${id}`,{method:"DELETE"});await loadProject(STATE.id);toast("Tarea eliminada");}
 async function addTask(lid){await api(`/api/lines/${lid}/tasks`,{method:"POST",body:JSON.stringify({name:"Nueva tarea",days:1})});await loadProject(STATE.id);}
 async function renameLine(id,v){await api(`/api/lines/${id}`,{method:"PUT",body:JSON.stringify({name:v})});}
-async function delLine(id){if(!confirm("¿Quitar esta línea y sus tareas?"))return;await api(`/api/lines/${id}`,{method:"DELETE"});await loadProject(STATE.id);toast("Línea eliminada");}
+async function delLine(id){if(!await confirmDialog("¿Quitar esta línea y sus tareas?"))return;await api(`/api/lines/${id}`,{method:"DELETE"});await loadProject(STATE.id);toast("Línea eliminada");}
 async function addLine(){await api(`/api/projects/${STATE.id}/lines`,{method:"POST",body:JSON.stringify({name:"Nueva línea de trabajo"})});await loadProject(STATE.id);}
-async function updResp(id,k,v){await api(`/api/responsibles/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});}
-async function delProject(){if(!confirm("¿Eliminar todo el proyecto?"))return;await api(`/api/projects/${STATE.id}`,{method:"DELETE"});TAB="crono";await boot();}
+async function autosort(){
+  const fixed=STATE.lines.reduce((n,l)=>n+l.tasks.filter(t=>t.start_override).length,0);
+  if(fixed&&!await confirmDialog(`${fixed} tarea(s) tienen fecha de inicio fija: no se moverán y el orden puede quedar irregular. ¿Ordenar de todos modos?`,"Ordenar"))return;
+  await api(`/api/projects/${STATE.id}/autosort`,{method:"POST",body:JSON.stringify({})});await loadProject(STATE.id);setTab('crono');render();toast("Ordenado por fecha de inicio");
+}
+async function setLineMonday(lid,val){await api(`/api/lines/${lid}/monday`,{method:"PUT",body:JSON.stringify({value:val})});await loadProject(STATE.id);toast(val?"Todas marcadas para Monday":"Todas desmarcadas");}
+async function updResp(id,k,v){await api(`/api/responsibles/${id}`,{method:"PUT",body:JSON.stringify({[k]:v})});if(k==='depto'){await loadProject(STATE.id);setTab('resp');render();}}
+async function delProject(){if(!await confirmDialog("¿Eliminar todo el proyecto?"))return;await api(`/api/projects/${STATE.id}`,{method:"DELETE"});TAB="crono";await boot();}
 function openTpl(){$("#tplName").value="";dlgTpl.showModal();}
 async function saveTemplate(){const n=$("#tplName").value.trim();if(!n){toast("Escribe un nombre");return;}await api("/api/templates",{method:"POST",body:JSON.stringify({project_id:STATE.id,name:n})});dlgTpl.close();toast("Plantilla guardada");}
 
@@ -361,8 +723,10 @@ async function launch(){
   if(r.blocked){
     let h=`<p class="issue error">No se publicó: hay errores que corregir.</p>`;
     h+=r.issues.map(i=>`<div class="issue ${i.level}">${esc(i.msg)}</div>`).join("");
+    if(r.hard) h+=`<p class="small" style="margin-top:8px">Ve a la pestaña <b>Responsables</b> y elige una persona por departamento.</p>`;
     $("#launchBody").innerHTML=h;
-    $("#launchFoot").innerHTML='<button onclick="dlgLaunch.close()">Cerrar</button><button class="primary" onclick="forceLaunch()">Publicar de todos modos</button>';
+    $("#launchFoot").innerHTML='<button onclick="dlgLaunch.close()">Cerrar</button>'
+      + (r.hard?'':'<button class="primary" onclick="forceLaunch()">Publicar de todos modos</button>');
     return;
   }
   showLaunchResult(r);
@@ -383,7 +747,44 @@ function showLaunchResult(r){
     <p class="small">El proyecto quedó <b>Lanzado</b> y el payload (con IDs traducidos) se guardó en la base de datos.</p>`;
   $("#launchFoot").innerHTML='<button class="primary" onclick="dlgLaunch.close()">Listo</button>';
 }
-boot();
+
+// ---------- autenticación (Google) ----------
+async function init(){
+  let me={};
+  try{ me=await api("/auth/me"); }catch(e){ me={enabled:false}; }
+  if(me.enabled && !me.user){ showLogin(me); return; }
+  if(me.user){
+    $("#userChip").textContent=me.user.email||"";
+    $("#btnLogout").style.display="";
+  }
+  boot();
+}
+function showLogin(me){
+  $("#hdrActions").style.display="none";
+  $("#app").innerHTML=`<div class="login"><div class="login-card">
+    <span class="stripe"></span>
+    <h2>Acceso Zebra</h2>
+    <p>Inicia sesión con tu correo <b>@${esc(me.domain||"zebradigital.marketing")}</b></p>
+    <div id="gbtn"></div>
+    <div class="issue error" id="loginErr" style="display:none"></div>
+  </div></div>`;
+  const start=()=>{
+    try{
+      google.accounts.id.initialize({client_id:me.client_id, callback:onGoogleCredential});
+      google.accounts.id.renderButton($("#gbtn"),{theme:"outline",size:"large",text:"signin_with",shape:"pill",width:260});
+    }catch(e){ $("#gbtn").innerHTML='<p class="small">No se pudo cargar Google. Recarga la página.</p>'; }
+  };
+  if(window.google && google.accounts && google.accounts.id) start();
+  else { let n=0,iv=setInterval(()=>{ if(window.google&&google.accounts&&google.accounts.id){clearInterval(iv);start();} else if(++n>40){clearInterval(iv);} },200); }
+}
+async function onGoogleCredential(resp){
+  const r=await api("/auth/google",{method:"POST",body:JSON.stringify({credential:resp.credential})});
+  if(r.ok){ location.reload(); return; }
+  const e=$("#loginErr"); if(e){ e.style.display="block"; e.textContent=r.error||"No se pudo iniciar sesión"; }
+}
+async function logout(){ await api("/auth/logout",{method:"POST"}); location.reload(); }
+
+init();
 </script>
 </body>
 </html>
